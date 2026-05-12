@@ -371,9 +371,11 @@ class PedidoDAO
         global $conn;
 
         $stmt = $conn->prepare(
-            "SELECT p.*, u.nombre AS cliente_nombre, u.username
+            "SELECT p.*, u.nombre AS cliente_nombre, u.username, m.numero_mesa
              FROM pedidos p
              LEFT JOIN usuarios u ON p.usuario_id = u.id
+             LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+             LEFT JOIN mesas m ON m.id = pm.id_mesa
              WHERE p.estado = ?
              ORDER BY p.fecha_hora ASC"
         );
