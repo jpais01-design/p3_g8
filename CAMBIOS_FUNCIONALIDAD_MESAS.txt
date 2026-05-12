@@ -1,0 +1,378 @@
+GUÍA COMPLETA: CÓMO IMPLEMENTAR LA FUNCIONALIDAD DE MESAS EN EL PROYECTO
+=====================================================================
+
+Objetivo funcional
+------------------
+Añadir un flujo para pedidos "en local" que obligue a seleccionar una mesa disponible,
+y que esa mesa quede asociada al pedido para poder verla después en:
+1) panel de camarero
+2) panel de gerente
+
+También se amplía la base de datos para soportar mesas y la relación pedido-mesa.
+
+
+1) FICHEROS CREADOS
+===================
+
+1.1) includes/Formulario/FormularioElegirMesa.php
+--------------------------------------------------
+Qué hace:
+- Muestra las mesas disponibles.
+- Permite seleccionar una mesa.
+- Guarda la mesa elegida en sesión de carrito.
+- Redirige al catálogo.
+
+Código completo del fichero:
+
+<?php
+namespace es\ucm\fdi\aw\Formulario;
+
+require_once __DIR__ . '/Formulario.php';
+require_once __DIR__ . '/../../includes/PedidoService.php';
+
+class FormularioElegirMesa extends Formulario
+{
+    public function __construct() {
+        parent::__construct('formElegirMesa'); 
+    }
+    
+    protected function generaCamposFormulario(&$datos)
+    {
+        $mesas = \PedidoService::getMesasDisponibles();
+        if (empty($mesas)) {
+            return '<p>No hay mesas disponibles ahora mismo.</p>';
+        }
+
+        $html = '<form method="POST"><div class="acciones-tipo">';
+        foreach ($mesas as $mesa) {
+            $html .= '<button type="submit" name="mesa_id" value="' . (int) $mesa['id'] . '">Mesa ' . (int) $mesa['numero_mesa'] . ' (' . (int) $mesa['capacidad_ocupantes'] . ' personas)</button>';
+        }
+        $html .= '</div></form>';
+
+        return $html;
+    }
+
+    protected function procesaFormulario(&$datos)
+    {
+        $mesa_id = isset($datos['mesa_id']) ? (int) $datos['mesa_id'] : 0;
+        if ($mesa_id <= 0) {
+            $this->errores[] = 'Mesa inválida';
+            return;
+        }
+
+        \PedidoService::setMesaCarrito($mesa_id);
+        header('Location: ' . RUTA_APP . '/vistas/pedidos/catalogo.php');
+        exit;
+    }
+}
+
+
+1.2) vistas/pedidos/elegirMesa.php
+-----------------------------------
+Qué hace:
+- Es la pantalla intermedia tras elegir "En local".
+- Controla que el pedido sea de tipo local.
+- Evita re-seleccionar mesa si ya hay una elegida.
+
+Código completo del fichero:
+
+<?php
+require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/util.php';
+require_once __DIR__ . '/../../includes/Formulario/FormularioElegirMesa.php';
+require_once __DIR__ . '/../../includes/PedidoService.php';
+
+require_login();
+
+if (PedidoService::getTipoCarrito() !== 'local') {
+    redirect('elegirTipo.php');
+}
+
+if (PedidoService::getMesaCarrito() !== null) {
+    redirect('catalogo.php');
+}
+
+$form = new \es\ucm\fdi\aw\Formulario\FormularioElegirMesa();
+$htmlForm = $form->gestiona();
+
+$tituloPagina = 'Elegir mesa | Bistro FDI';
+ob_start();
+?>
+<main>
+<div class="panel">
+<h2>Selecciona una mesa disponible</h2>
+<?= $htmlForm ?>
+</div>
+</main>
+<?php
+$contenidoPrincipal = ob_get_clean();
+require __DIR__ . '/../../includes/plantilla.php';
+
+
+2) FICHEROS MODIFICADOS
+=======================
+
+2.1) includes/MySQL/02-tablas.sql
+----------------------------------
+Líneas añadidas: creación de tablas `mesas` y `pedidos_mesa`.
+
+Bloque añadido:
+
+CREATE TABLE IF NOT EXISTS `mesas` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `numero_mesa` INT NOT NULL UNIQUE,
+    `capacidad_ocupantes` INT NOT NULL,
+    `ocupada` TINYINT(1) NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS `pedidos_mesa` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_mesa` INT NOT NULL,
+    `id_pedido` INT NOT NULL,
+    FOREIGN KEY (`id_mesa`) REFERENCES `mesas`(`id`),
+    FOREIGN KEY (`id_pedido`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+    UNIQUE (`id_pedido`)
+);
+
+Nota:
+- UNIQUE(id_pedido) implica que un pedido solo puede tener una mesa asignada.
+
+
+2.2) includes/MySQL/03-datos.sql
+---------------------------------
+Líneas añadidas: datos semilla de mesas.
+
+Bloque añadido:
+
+INSERT INTO `mesas` (`numero_mesa`, `capacidad_ocupantes`, `ocupada`) VALUES
+(1, 2, 0),
+(2, 2, 0),
+(3, 4, 0),
+(4, 4, 0),
+(5, 6, 0),
+(6, 8, 0);
+
+
+2.3) includes/Formulario/FormularioElegirTipo.php
+--------------------------------------------------
+Líneas modificadas: en el procesado, tras iniciar carrito.
+
+Cambio aplicado:
+
+\PedidoService::iniciarCarrito($tipo);
+
+if ($tipo === 'local') {
+    header("Location: " . RUTA_APP . "/vistas/pedidos/elegirMesa.php");
+    exit;
+}
+
+header("Location: " . RUTA_APP . "/vistas/pedidos/catalogo.php");
+exit;
+
+Efecto:
+- Si es local, va a elegir mesa.
+- Si es llevar, va directo al catálogo.
+
+
+2.4) includes/PedidoService.php
+--------------------------------
+Cambios clave:
+A) Se añade `mesa_id` al carrito de sesión.
+B) Se crean métodos para gestionar mesa en carrito.
+C) Se propaga `mesa_id` al confirmar el pedido.
+
+A) Inicialización del carrito con mesa:
+
+if (!isset($_SESSION['carrito']['mesa_id'])) {
+    $_SESSION['carrito']['mesa_id'] = null;
+}
+
+... en iniciarCarrito:
+
+$_SESSION['carrito'] = [
+    'tipo' => $tipo,
+    'mesa_id' => null,
+    'items' => [],
+    'ofertas' => [],
+];
+
+B) Métodos nuevos:
+
+public static function setMesaCarrito(int $mesa_id): void
+{
+    self::asegurarCarritoSesion();
+    $_SESSION['carrito']['mesa_id'] = $mesa_id;
+}
+
+public static function getMesaCarrito(): ?int
+{
+    self::asegurarCarritoSesion();
+    return isset($_SESSION['carrito']['mesa_id']) ? (int) $_SESSION['carrito']['mesa_id'] : null;
+}
+
+public static function getMesasDisponibles(): array
+{
+    return PedidoDAO::getMesasDisponibles();
+}
+
+C) Confirmación de carrito:
+
+$mesa_id = isset($carrito['mesa_id']) ? (int) $carrito['mesa_id'] : null;
+$pedido_id = PedidoDAO::guardarPedidoCompleto(
+    $usuario_id,
+    $metodo_pago,
+    $tipo,
+    $estado,
+    $lineas,
+    $ofertas,
+    $total_sin_descuentos,
+    $total_descuento,
+    $mesa_id
+);
+
+
+2.5) includes/PedidoDAO.php
+----------------------------
+Cambios clave:
+A) `guardarPedidoCompleto(...)` acepta `mesa_id`.
+B) Si pedido local + mesa válida -> se asigna mesa al pedido.
+C) Nuevos métodos `getMesasDisponibles()` y `asignarMesaAPedido()`.
+D) Se añade `numero_mesa` en consultas para gerente y camarero.
+
+A) Firma de método modificada:
+
+public static function guardarPedidoCompleto(
+    int $usuario_id,
+    string $metodo_pago,
+    string $tipo,
+    string $estado,
+    array $lineas,
+    array $ofertas,
+    float $total_sin_descuentos,
+    float $total_descuento,
+    ?int $mesa_id = null
+): int
+
+B) Asignación de mesa dentro de transacción:
+
+if ($tipo === 'local' && $mesa_id !== null) {
+    self::asignarMesaAPedido($pedido_id, $mesa_id);
+}
+
+C) Métodos nuevos:
+
+public static function getMesasDisponibles()
+{
+    global $conn;
+
+    $stmt = $conn->prepare("SELECT id, numero_mesa, capacidad_ocupantes FROM mesas WHERE ocupada = 0 ORDER BY numero_mesa ASC");
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $mesas = $result->fetch_all(MYSQLI_ASSOC);
+    $result->free();
+    $stmt->close();
+
+    return $mesas;
+}
+
+public static function asignarMesaAPedido(int $pedido_id, int $mesa_id): bool
+{
+    global $conn;
+
+    $stmt = $conn->prepare("INSERT INTO pedidos_mesa (id_mesa, id_pedido) VALUES (?, ?)");
+    $stmt->bind_param("ii", $mesa_id, $pedido_id);
+    $ok = $stmt->execute();
+    $stmt->close();
+
+    if (!$ok) {
+        return false;
+    }
+
+    $stmt2 = $conn->prepare("UPDATE mesas SET ocupada = 1 WHERE id = ?");
+    $stmt2->bind_param("i", $mesa_id);
+    $ok2 = $stmt2->execute();
+    $stmt2->close();
+
+    return $ok2;
+}
+
+D1) Consulta de gerente ampliada con mesa:
+
+... m.numero_mesa
+FROM pedidos p
+LEFT JOIN usuarios uc ON p.cocinero_id = uc.id
+LEFT JOIN usuarios um ON p.camarero_id = um.id
+LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+LEFT JOIN mesas m ON m.id = pm.id_mesa
+...
+
+D2) Consulta de camarero por estado ampliada con mesa:
+
+SELECT p.*, u.nombre AS cliente_nombre, u.username, m.numero_mesa
+FROM pedidos p
+LEFT JOIN usuarios u ON p.usuario_id = u.id
+LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+LEFT JOIN mesas m ON m.id = pm.id_mesa
+WHERE p.estado = ?
+ORDER BY p.fecha_hora ASC
+
+
+2.6) vistas/preparacion_pedidos/panel_gerente.php
+--------------------------------------------------
+Cambios:
+- Nueva columna "Mesa" en cabecera.
+- `colspan` de tabla vacía de 5 a 6.
+
+Fragmento:
+
+<th>Mesa</th>
+...
+<td colspan="6" class="tabla-panel-vacia" data-label="">
+
+
+2.7) vistas/preparacion_pedidos/_fila_pedido_gerente.php
+----------------------------------------------------------
+Cambio:
+- Mostrar mesa por pedido.
+
+Fragmento añadido:
+
+<td data-label="Mesa" class="celda-centrada">
+    <?= isset($p['numero_mesa']) && $p['numero_mesa'] !== null ? ('Mesa #' . (int) $p['numero_mesa']) : '-' ?>
+</td>
+
+
+2.8) vistas/pedidos/_tarjetas_camarero.php
+-------------------------------------------
+Cambio:
+- Mostrar mesa en tarjetas de camarero para pedidos locales.
+
+Fragmento añadido:
+
+<?php if ($p['tipo'] === 'local'): ?>
+    <p><strong>Mesa:</strong> <?= isset($p['numero_mesa']) && $p['numero_mesa'] !== null ? ('#' . (int) $p['numero_mesa']) : 'Sin asignar' ?></p>
+<?php endif; ?>
+
+
+3) RESUMEN DEL FLUJO FINAL
+==========================
+1. Cliente entra en elegir tipo de pedido.
+2. Si elige "llevar" -> va directo a catálogo.
+3. Si elige "local" -> va a elegirMesa.php.
+4. Se listan mesas libres (`ocupada = 0`).
+5. Cliente selecciona mesa.
+6. Se guarda `mesa_id` en sesión de carrito.
+7. Al confirmar pedido, se persiste pedido y se inserta relación en `pedidos_mesa`.
+8. La mesa queda marcada como ocupada (`ocupada = 1`).
+9. Camarero y gerente ven la mesa asociada en sus vistas.
+
+
+4) RECOMENDACIONES PARA REPLICARLO EN OTRO PROYECTO
+====================================================
+- Implementar primero el modelo de datos (`mesas` + relación pedido-mesa).
+- Después el estado de sesión del carrito (guardar `mesa_id`).
+- Luego el flujo UI (pantalla intermedia para local).
+- Finalmente, enriquecer consultas de listados y pintar la mesa en vistas.
+- Validar con `php -l` todos los ficheros tocados.
+
