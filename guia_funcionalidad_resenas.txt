@@ -1,113 +1,514 @@
-GUÍA COMPLETA: IMPLEMENTACIÓN DE RESEÑAS DE PRODUCTOS POR PEDIDO
+GUÍA COMPLETA: CÓMO IMPLEMENTAR LA FUNCIONALIDAD DE RESEÑAS POR PEDIDO
+========================================================================
 
-1) EXPLICACIÓN GENERAL
-Se añadió un flujo de reseñas por pedido entregado. El usuario entra al histórico, inicia un proceso de valoración para un pedido, puede reseñar uno o varios productos del pedido en modo borrador y después:
-- cancelar (descarta todo el borrador), o
-- finalizar (persiste reseñas y bloquea nuevas reseñas en ese pedido).
+Objetivo funcional
+------------------
+Permitir que un cliente reseñe uno o varios productos de un pedido entregado,
+con flujo de borrador por pedido y cierre explícito del proceso.
 
-Además, se añadió visualización de reseñas de producto desde catálogo/detalle y desde mostrarProductosCategoria.
+Reglas que cubre esta implementación:
+1) Un usuario no puede reseñar dos veces el mismo producto dentro del mismo pedido.
+2) Si el pedido ya se finalizó como reseñado, no se puede volver a reseñar.
+3) Mientras no se finaliza, el usuario puede guardar reseñas temporales por producto.
+4) Si cancela el proceso, se descarta todo el borrador del pedido.
+5) Las reseñas se pueden visualizar desde producto (detalle/listados).
 
-2) FLUJO PASO A PASO
-2.1 Perfil > Histórico de pedidos.
-2.2 Si pedido está “entregado” y no reseñado: botón “Hacer reseña”.
-2.3 Vista de proceso de reseñas por pedido: lista de productos del pedido.
-2.4 Cada producto permite guardar reseña temporal (texto + valoración 1..5).
-2.5 “Cancelar valoración”: elimina borrador en sesión para ese pedido.
-2.6 “Finalizar valoración”: inserta todas las reseñas del borrador en BBDD y bloquea nueva reseña del mismo pedido.
-2.7 Si el pedido ya fue reseñado, no vuelve a permitir iniciar proceso.
 
-3) ARCHIVOS NUEVOS
+1) FICHEROS CREADOS
+===================
+
+1.1) includes/ResenaDAO.php
+---------------------------
+Qué hace:
+- Consulta si un pedido ya fue reseñado por ese usuario.
+- Obtiene los productos de un pedido para reseñar.
+- Inserta reseñas finales en base de datos.
+- Lista reseñas por producto mostrando usuario y fecha.
+
+Código completo del fichero:
+
+<?php
+require_once __DIR__ . '/application.php';
+
+class ResenaDAO
+{
+    public static function pedidoYaResenadoPorUsuario(int $usuario_id, int $pedido_id): bool
+    {
+        global $conn;
+        $stmt = $conn->prepare("SELECT id FROM resenas WHERE usuario_id = ? AND pedido_id = ? LIMIT 1");
+        $stmt->bind_param("ii", $usuario_id, $pedido_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $ya = (bool) $result->fetch_assoc();
+        $result->free();
+        $stmt->close();
+        return $ya;
+    }
+
+    public static function getProductosResenablesPedido(int $pedido_id): array
+    {
+        global $conn;
+        $stmt = $conn->prepare(
+            "SELECT pep.producto_id, p.nombre, p.imagen
+             FROM productos_en_pedido pep
+             JOIN productos p ON p.id = pep.producto_id
+             WHERE pep.pedido_id = ?
+             ORDER BY p.nombre ASC"
+        );
+        $stmt->bind_param("i", $pedido_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+        $result->free();
+        $stmt->close();
+        return $rows;
+    }
+
+    public static function insertarResena(int $usuario_id, int $producto_id, int $pedido_id, string $texto, int $valoracion): bool
+    {
+        global $conn;
+        $stmt = $conn->prepare(
+            "INSERT INTO resenas (usuario_id, producto_id, pedido_id, texto, valoracion, fecha_creacion)
+             VALUES (?, ?, ?, ?, ?, NOW())"
+        );
+        $stmt->bind_param("iiisi", $usuario_id, $producto_id, $pedido_id, $texto, $valoracion);
+        $ok = $stmt->execute();
+        $stmt->close();
+        return $ok;
+    }
+
+    public static function getResenasByProducto(int $producto_id): array
+    {
+        global $conn;
+        $stmt = $conn->prepare(
+            "SELECT r.texto, r.valoracion, r.fecha_creacion, u.username
+             FROM resenas r
+             JOIN usuarios u ON u.id = r.usuario_id
+             WHERE r.producto_id = ?
+             ORDER BY r.fecha_creacion DESC"
+        );
+        $stmt->bind_param("i", $producto_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $rows = [];
+        while ($row = $result->fetch_assoc()) {
+            $rows[] = $row;
+        }
+        $result->free();
+        $stmt->close();
+        return $rows;
+    }
+}
+
+
+1.2) includes/ResenaService.php
+-------------------------------
+Qué hace:
+- Gestiona borradores en sesión por `pedido_id`.
+- Valida valoración entre 1 y 5.
+- Bloquea pedidos ya reseñados.
+- Finaliza proceso insertando todas las reseñas del borrador.
+- Cancela proceso eliminando el borrador completo del pedido.
+
+Código completo del fichero:
+
+<?php
+require_once __DIR__ . '/ResenaDAO.php';
+
+class ResenaService
+{
+    private static function asegurarSesionResenas(): void
+    {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        if (!isset($_SESSION['resenas_borrador']) || !is_array($_SESSION['resenas_borrador'])) {
+            $_SESSION['resenas_borrador'] = [];
+        }
+    }
+
+    public static function agregarResenaBorrador(int $usuario_id, int $pedido_id, int $producto_id, string $texto, int $valoracion): array
+    {
+        self::asegurarSesionResenas();
+        if ($valoracion < 1 || $valoracion > 5) {
+            return [false, 'La valoración debe estar entre 1 y 5.'];
+        }
+        if (ResenaDAO::pedidoYaResenadoPorUsuario($usuario_id, $pedido_id)) {
+            return [false, 'Este pedido ya tiene su valoración finalizada.'];
+        }
+
+        if (!isset($_SESSION['resenas_borrador'][$pedido_id])) {
+            $_SESSION['resenas_borrador'][$pedido_id] = [];
+        }
+
+        $_SESSION['resenas_borrador'][$pedido_id][$producto_id] = [
+            'texto' => trim($texto),
+            'valoracion' => $valoracion,
+        ];
+
+        return [true, 'Reseña guardada temporalmente.'];
+    }
+
+    public static function getBorradorPedido(int $pedido_id): array
+    {
+        self::asegurarSesionResenas();
+        return $_SESSION['resenas_borrador'][$pedido_id] ?? [];
+    }
+
+    public static function cancelarProcesoPedido(int $pedido_id): void
+    {
+        self::asegurarSesionResenas();
+        unset($_SESSION['resenas_borrador'][$pedido_id]);
+    }
+
+    public static function finalizarProcesoPedido(int $usuario_id, int $pedido_id): array
+    {
+        self::asegurarSesionResenas();
+        if (ResenaDAO::pedidoYaResenadoPorUsuario($usuario_id, $pedido_id)) {
+            unset($_SESSION['resenas_borrador'][$pedido_id]);
+            return [false, 'Este pedido ya fue reseñado previamente.'];
+        }
+
+        $borrador = $_SESSION['resenas_borrador'][$pedido_id] ?? [];
+        if (empty($borrador)) {
+            return [false, 'Debes añadir al menos una reseña antes de finalizar.'];
+        }
+
+        foreach ($borrador as $producto_id => $data) {
+            ResenaDAO::insertarResena($usuario_id, (int) $producto_id, $pedido_id, (string) ($data['texto'] ?? ''), (int) ($data['valoracion'] ?? 0));
+        }
+
+        unset($_SESSION['resenas_borrador'][$pedido_id]);
+        return [true, 'Valoración finalizada correctamente.'];
+    }
+}
+
+
+1.3) vistas/resenas/proceso.php
+--------------------------------
+Qué hace:
+- Pantalla principal del proceso de reseña por pedido.
+- Carga productos del pedido entregado y del usuario autenticado.
+- Permite guardar reseña por producto (borrador), cancelar o finalizar.
+
+Código completo del fichero:
+
+<?php
+require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/application.php';
+require_once __DIR__ . '/../../includes/auth.php';
+require_once __DIR__ . '/../../includes/PedidoDAO.php';
+require_once __DIR__ . '/../../includes/ResenaService.php';
+require_once __DIR__ . '/../../includes/ResenaDAO.php';
+
+$user = require_login();
+$usuario_id = (int) $user->getId();
+$pedido_id = isset($_GET['pedido_id']) ? (int) $_GET['pedido_id'] : (int) ($_POST['pedido_id'] ?? 0);
+
+$pedido = $pedido_id > 0 ? PedidoDAO::getPedidoById($pedido_id) : null;
+if (!$pedido || (int) $pedido->getUsuario_id() !== $usuario_id || $pedido->getEstado() !== 'entregado') {
+    flash_set('error', 'Pedido no válido para reseñar.');
+    redirect(RUTA_APP . '/vistas/usuarios/perfil.php?tab=historico');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $accion = $_POST['accion'] ?? '';
+    if ($accion === 'guardar_producto') {
+        $producto_id = (int) ($_POST['producto_id'] ?? 0);
+        $texto = trim((string) ($_POST['texto'] ?? ''));
+        $valoracion = (int) ($_POST['valoracion'] ?? 0);
+        [$ok, $msg] = ResenaService::agregarResenaBorrador($usuario_id, $pedido_id, $producto_id, $texto, $valoracion);
+        flash_set($ok ? 'success' : 'error', $msg);
+    } elseif ($accion === 'cancelar') {
+        ResenaService::cancelarProcesoPedido($pedido_id);
+        flash_set('info', 'Proceso de valoración cancelado.');
+        redirect(RUTA_APP . '/vistas/usuarios/perfil.php?tab=historico');
+    } elseif ($accion === 'finalizar') {
+        [$ok, $msg] = ResenaService::finalizarProcesoPedido($usuario_id, $pedido_id);
+        flash_set($ok ? 'success' : 'error', $msg);
+        if ($ok) {
+            redirect(RUTA_APP . '/vistas/usuarios/perfil.php?tab=historico');
+        }
+    }
+}
+
+$productos = ResenaDAO::getProductosResenablesPedido($pedido_id);
+$borrador = ResenaService::getBorradorPedido($pedido_id);
+
+$tituloPagina = 'Reseñar pedido | Bistro FDI';
+$rutaCSS = RUTA_APP . '/CSS/estilo.css';
+ob_start();
+?>
+<main>
+    <div class="panel">
+        <h2>Reseñar pedido #<?= escaparHtml((string) $pedido->getNumero_pedido()) ?></h2>
+
+        <?php foreach (flash_get_all() as $f): ?>
+            <div class="mensaje-<?= escaparHtml($f['type']) ?>"><?= escaparHtml($f['message']) ?></div>
+        <?php endforeach; ?>
+
+        <p>Selecciona los productos que quieras reseñar. Se guardan en borrador hasta finalizar.</p>
+
+        <?php foreach ($productos as $prod):
+            $pid = (int) $prod['producto_id'];
+            $data = $borrador[$pid] ?? ['texto' => '', 'valoracion' => 5];
+        ?>
+            <div class="panel mb-12">
+                <h3><?= escaparHtml($prod['nombre']) ?></h3>
+                <form method="POST">
+                    <input type="hidden" name="pedido_id" value="<?= $pedido_id ?>">
+                    <input type="hidden" name="producto_id" value="<?= $pid ?>">
+                    <input type="hidden" name="accion" value="guardar_producto">
+                    <label>Valoración (1-5)</label>
+                    <input type="number" name="valoracion" min="1" max="5" required value="<?= (int) $data['valoracion'] ?>">
+                    <label>Reseña</label>
+                    <textarea name="texto" rows="3" maxlength="1000"><?= escaparHtml((string) $data['texto']) ?></textarea>
+                    <button type="submit" class="btn small">Confirmar reseña del producto</button>
+                </form>
+            </div>
+        <?php endforeach; ?>
+
+        <div class="actions-inline">
+            <form method="POST" onsubmit="return confirm('¿Cancelar todo el proceso de valoración?');">
+                <input type="hidden" name="pedido_id" value="<?= $pedido_id ?>">
+                <input type="hidden" name="accion" value="cancelar">
+                <button type="submit" class="btn danger">Cancelar valoración</button>
+            </form>
+
+            <form method="POST">
+                <input type="hidden" name="pedido_id" value="<?= $pedido_id ?>">
+                <input type="hidden" name="accion" value="finalizar">
+                <button type="submit" class="btn primary">Finalizar valoración</button>
+            </form>
+        </div>
+    </div>
+</main>
+<?php
+$contenidoPrincipal = ob_get_clean();
+require __DIR__ . '/../../includes/plantilla.php';
+
+
+1.4) vistas/resenas/ver.php
+----------------------------
+Qué hace:
+- Muestra todas las reseñas de un producto.
+- Enseña usuario, valoración, texto y fecha.
+
+Código completo del fichero:
+
+<?php
+require_once __DIR__ . '/../../includes/config.php';
+require_once __DIR__ . '/../../includes/application.php';
+require_once __DIR__ . '/../../includes/util.php';
+require_once __DIR__ . '/../../includes/ResenaDAO.php';
+require_once __DIR__ . '/../../includes/ProductoDAO.php';
+
+$producto_id = isset($_GET['producto_id']) ? (int) $_GET['producto_id'] : 0;
+$producto = $producto_id > 0 ? ProductoDAO::getById($producto_id) : null;
+if (!$producto) {
+    redirect(RUTA_APP . '/vistas/pedidos/catalogo.php');
+}
+$resenas = ResenaDAO::getResenasByProducto($producto_id);
+
+$tituloPagina = 'Reseñas de producto | Bistro FDI';
+$rutaCSS = RUTA_APP . '/CSS/estilo.css';
+ob_start();
+?>
+<main>
+    <div class="panel">
+        <h2>Reseñas de <?= escaparHtml($producto->getNombre()) ?></h2>
+        <?php if (empty($resenas)): ?>
+            <p>Este producto todavía no tiene reseñas.</p>
+        <?php else: ?>
+            <?php foreach ($resenas as $r): ?>
+                <article class="panel mb-12">
+                    <p><strong>Usuario:</strong> <?= escaparHtml($r['username']) ?></p>
+                    <p><strong>Valoración:</strong> <?= (int) $r['valoracion'] ?>/5</p>
+                    <p><strong>Reseña:</strong> <?= nl2br(escaparHtml($r['texto'])) ?></p>
+                    <p><strong>Fecha:</strong> <?= escaparHtml($r['fecha_creacion']) ?></p>
+                </article>
+            <?php endforeach; ?>
+        <?php endif; ?>
+        <a href="javascript:history.back()" class="btn">← Volver</a>
+    </div>
+</main>
+<?php
+$contenidoPrincipal = ob_get_clean();
+require __DIR__ . '/../../includes/plantilla.php';
+
+
+2) FICHEROS MODIFICADOS
+=======================
+
+2.1) includes/MySQL/02-tablas.sql
+----------------------------------
+Líneas añadidas: creación de tabla `resenas`.
+
+Bloque añadido:
+
+CREATE TABLE IF NOT EXISTS `resenas` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `usuario_id` INT NOT NULL,
+    `producto_id` INT NOT NULL,
+    `pedido_id` INT NOT NULL,
+    `texto` TEXT,
+    `valoracion` TINYINT NOT NULL,
+    `fecha_creacion` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`producto_id`) REFERENCES `productos`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `chk_resenas_valoracion` CHECK (`valoracion` BETWEEN 1 AND 5),
+    UNIQUE (`usuario_id`, `producto_id`, `pedido_id`)
+);
+
+Nota:
+- El `UNIQUE(usuario_id, producto_id, pedido_id)` evita duplicados exactos.
+
+
+2.2) includes/PedidoDAO.php
+----------------------------
+Cambio:
+- En `getPedidosHistoricoByUsuario(...)` se añadió `ya_resenado` con `EXISTS(...)`
+  para pintar acciones de reseña en la interfaz.
+
+Fragmento clave:
+
+SELECT p.id, p.numero_pedido, p.fecha_hora, p.tipo, p.total, p.estado, p.bistrocoins_generados, p.bistrocoins_gastados,
+       EXISTS(SELECT 1 FROM resenas r WHERE r.pedido_id = p.id AND r.usuario_id = p.usuario_id) AS ya_resenado
+FROM pedidos p
+WHERE p.usuario_id = ?
+  AND estado != 'nuevo'
+ORDER BY fecha_hora DESC
+LIMIT 15
+
+
+2.3) vistas/usuarios/_pedidos_historico.php
+--------------------------------------------
+Cambios:
+- En cada pedido, además de "Ver detalle", se pinta:
+  - "Hacer reseña" si está entregado y no reseñado.
+  - "Reseñado" si ya existe valoración.
+
+Fragmento añadido:
+
+<?php if ((string)$p['estado'] === 'entregado' && empty($p['ya_resenado'])): ?>
+    <a class="btn small" href="<?= RUTA_APP ?>/vistas/resenas/proceso.php?pedido_id=<?= (int) $p['id'] ?>">Hacer reseña</a>
+<?php elseif (!empty($p['ya_resenado'])): ?>
+    <span class="muted">Reseñado</span>
+<?php endif; ?>
+
+
+2.4) vistas/pedidos/listarPedidosCliente.php
+---------------------------------------------
+Cambios:
+- Se añadió `ResenaDAO`.
+- Se añadió botón "Hacer reseña" en listado de pedidos del cliente (cuando procede).
+- Se muestra "Reseñado" cuando ya existe cierre de reseñas.
+
+Fragmento añadido:
+
+<?php $yaResenadoPedido = ResenaDAO::pedidoYaResenadoPorUsuario((int)$user->getId(), (int)$p->getId()); ?>
+<?php if (!$esGerenteConsultando && $p->getEstado() === 'entregado' && !$yaResenadoPedido): ?>
+  <a href="<?= RUTA_APP ?>/vistas/resenas/proceso.php?pedido_id=<?= (int)$p->getId() ?>" class="btn small">Hacer reseña</a>
+<?php elseif (!$esGerenteConsultando && $yaResenadoPedido): ?>
+  <span class="muted">Reseñado</span>
+<?php endif; ?>
+
+
+2.5) vistas/productos/detalle_producto.php
+-------------------------------------------
+Cambio:
+- Se añadió botón "Ver reseñas" en la ficha del producto.
+
+
+2.6) vistas/productos/_tarjeta_producto.php
+--------------------------------------------
+Cambio:
+- Se añadió botón "Ver reseñas" en tarjetas de productos de categoría.
+
+
+2.7) vistas/pedidos/_fila_producto_catalogo.php
+------------------------------------------------
+Cambio:
+- Se añadió acceso "Ver reseñas" desde el catálogo para facilitar consulta al cliente.
+
+
+2.8) vistas/resenas/ver.php
+----------------------------
+Cambio de corrección:
+- Se añadió `require_once .../includes/util.php` para disponer de `escaparHtml()` y evitar fatal error.
+
+
+3) RESUMEN DEL FLUJO FINAL
+==========================
+1. Cliente entra en su perfil > histórico/listado de pedidos.
+2. Si un pedido está "entregado" y no reseñado, aparece "Hacer reseña".
+3. Entra en la vista de proceso y ve los productos de ese pedido.
+4. Puede guardar reseñas en borrador por producto (texto + valoración 1..5).
+5. Puede cancelar (se borra todo el borrador del pedido) o finalizar.
+6. Al finalizar, se insertan las reseñas en BD y se bloquea repetir reseña del pedido.
+7. Las reseñas de un producto se consultan desde detalle/listados con "Ver reseñas".
+
+
+4) RECOMENDACIONES PARA REPLICARLO EN OTRO PROYECTO
+====================================================
+- Implementar primero la tabla con índices/constraints de integridad.
+- Separar acceso a datos (DAO) de reglas de negocio (Service).
+- Usar borrador temporal por pedido antes del commit final.
+- Revalidar reglas en el paso final (no confiar solo en checks de UI).
+- Añadir enlaces de entrada/salida del flujo en todas las vistas relevantes.
+- Validar sintaxis con `php -l` en todos los ficheros tocados.
+
+
+5) MAPA DE LÍNEAS (REFERENCIA RÁPIDA)
+=====================================
+Para localizar rápido cada pieza usa `nl -ba <ruta>`.
+
 - includes/ResenaDAO.php
+  - Clase completa: líneas 1-75.
+  - Validación pedido reseñado: 6-17.
+  - Productos reseñables: 19-39.
+  - Inserción reseña: 41-52.
+  - Listado por producto: 54-74.
+
 - includes/ResenaService.php
+  - Clase completa: líneas 1-70.
+  - Borrador en sesión: 6-14.
+  - Guardado borrador y validación 1..5: 16-36.
+  - Cancelación total del pedido: 44-48.
+  - Finalización e inserción: 50-69.
+
 - vistas/resenas/proceso.php
+  - Flujo completo: líneas 1-93.
+  - Control de permiso/estado pedido: 13-17.
+  - Acciones guardar/cancelar/finalizar: 19-37.
+
 - vistas/resenas/ver.php
-- guia_funcionalidad_resenas.txt (este archivo)
+  - Vista completa: líneas 1-39.
+  - Carga de util.php (fix escaparHtml): línea 4.
 
-4) CADA ARCHIVO NUEVO: PROPÓSITO + CÓDIGO COMPLETO
-
-4.1 includes/ResenaDAO.php
-Propósito: capa SQL de reseñas (consulta de estado, productos reseñables, inserción y listado por producto).
-Código completo:
-(Ver archivo literal en proyecto: includes/ResenaDAO.php)
-
-4.2 includes/ResenaService.php
-Propósito: lógica de negocio del proceso (borrador en sesión, validaciones y finalización).
-Código completo:
-(Ver archivo literal en proyecto: includes/ResenaService.php)
-
-4.3 vistas/resenas/proceso.php
-Propósito: vista/controlador del flujo de reseñas por pedido (guardar producto, cancelar, finalizar).
-Código completo:
-(Ver archivo literal en proyecto: vistas/resenas/proceso.php)
-
-4.4 vistas/resenas/ver.php
-Propósito: mostrar reseñas de un producto (usuario, valoración, texto, fecha).
-Código completo:
-(Ver archivo literal en proyecto: vistas/resenas/ver.php)
-
-5) ARCHIVOS MODIFICADOS
 - includes/MySQL/02-tablas.sql
+  - Tabla resenas: líneas 153-166.
+
 - includes/PedidoDAO.php
+  - Flag `ya_resenado` en histórico: líneas 561-563.
+
 - vistas/usuarios/_pedidos_historico.php
+  - Botón hacer reseña / etiqueta reseñado: líneas 35-39.
+
+- vistas/pedidos/listarPedidosCliente.php
+  - require de ResenaDAO: línea 10.
+  - botón hacer reseña / reseñado: líneas 100-105.
+
 - vistas/productos/detalle_producto.php
+  - botón ver reseñas: línea 51.
+
 - vistas/productos/_tarjeta_producto.php
-- vistas/pedidos/_fila_producto_catalogo.php
+  - botón ver reseñas: líneas 50-52.
 
-6) PARA CADA MODIFICADO: LÍNEAS, CONTEXTO, MOTIVO, CÓDIGO
-6.1 includes/MySQL/02-tablas.sql
-- Se añadió CREATE TABLE resenas con constraints y UNIQUE(usuario_id, producto_id, pedido_id).
-- Motivo: persistencia y validación de duplicados en BBDD.
-
-6.2 includes/PedidoDAO.php
-- Se añadió campo calculado ya_resenado en getPedidosHistoricoByUsuario mediante EXISTS sobre resenas.
-- Motivo: pintar botón “Hacer reseña” solo cuando corresponda.
-
-6.3 vistas/usuarios/_pedidos_historico.php
-- Se añadió lógica de acciones:
-  - “Hacer reseña” si estado entregado y !ya_resenado.
-  - “Reseñado” si ya está finalizado.
-- Motivo: integrar entrada al flujo en perfil.
-
-6.4 vistas/productos/detalle_producto.php
-- Se añadió botón “Ver reseñas”.
-
-6.5 vistas/productos/_tarjeta_producto.php
-- Se añadió botón “Ver reseñas” en listado por categoría (mostrarProductosCategoria).
-
-6.6 vistas/pedidos/_fila_producto_catalogo.php
-- Se añadió enlace “Ver reseñas” en catálogo (flujo desde carrito).
-
-7) CONSULTAS SQL IMPLEMENTADAS
-- CREATE TABLE resenas (..., CHECK valoracion BETWEEN 1 AND 5, UNIQUE(usuario_id, producto_id, pedido_id)).
-- SELECT para detectar si pedido ya reseñado por usuario.
-- SELECT productos de un pedido para reseñar.
-- INSERT de reseña final.
-- SELECT reseñas por producto con join a usuarios.
-- EXISTS en histórico para flag ya_resenado.
-
-8) VALIDACIONES DE DUPLICADOS
-- Nivel BBDD: UNIQUE(usuario_id, producto_id, pedido_id).
-- Nivel negocio: si pedidoYaResenadoPorUsuario=true, no se acepta seguir reseñando ni finalizar de nuevo.
-- Nivel borrador: cada producto en pedido se guarda por clave producto_id (sobrescribe borrador del mismo producto, no duplica).
-
-9) CANCELACIÓN Y FINALIZACIÓN
-- Cancelar: borra $_SESSION['resenas_borrador'][pedido_id].
-- Finalizar:
-  - exige al menos una reseña en borrador,
-  - revalida que el pedido no esté ya reseñado,
-  - inserta todas las reseñas del borrador,
-  - limpia borrador,
-  - al existir reseñas persistidas para ese pedido/usuario, queda bloqueado el reintento.
-
-10) VISUALIZACIÓN DE RESEÑAS
-- Nueva vista vistas/resenas/ver.php.
-- Muestra usuario, valoración numérica, texto y fecha.
-- Disponible desde:
-  - detalle de producto,
-  - catálogo (fila de producto),
-  - mostrarProductosCategoria (tarjeta de producto de gerente).
-
-NOTA DE REPLICACIÓN EN OTRO PROYECTO
-- Mantener siempre doble barrera de integridad (validación en aplicación + índice UNIQUE en BBDD).
-- Para “proceso no finalizado”, usar estado temporal en sesión o tabla borrador dedicada.
-- Bloqueo de re-reseña por pedido se puede representar por “existencia de cualquier reseña en ese pedido por ese usuario” o por un estado explícito de proceso en una tabla adicional.
+Nota importante:
+- Si editas estos archivos en el futuro, los números de línea pueden moverse.
+- Recalcula con `nl -ba` para obtener la posición exacta actualizada.
