@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../../includes/config.php';
 require_once __DIR__ . '/../../includes/application.php';
+require_once __DIR__ . '/../../includes/util.php';
 require_once __DIR__ . '/../../includes/ResenaDAO.php';
 require_once __DIR__ . '/../../includes/ProductoDAO.php';
 
