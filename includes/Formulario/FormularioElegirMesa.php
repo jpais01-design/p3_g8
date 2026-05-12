@@ -6,6 +6,12 @@ require_once __DIR__ . '/../../includes/PedidoService.php';
 
 class FormularioElegirMesa extends Formulario
 {
+    
+
+    public function __construct() {
+        parent::__construct('formElegirMesa'); 
+    }
+
     protected function generaCamposFormulario(&$datos)
     {
         $mesas = \PedidoService::getMesasDisponibles();
