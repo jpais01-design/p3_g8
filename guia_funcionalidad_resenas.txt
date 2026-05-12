@@ -1,0 +1,113 @@
+GUÍA COMPLETA: IMPLEMENTACIÓN DE RESEÑAS DE PRODUCTOS POR PEDIDO
+
+1) EXPLICACIÓN GENERAL
+Se añadió un flujo de reseñas por pedido entregado. El usuario entra al histórico, inicia un proceso de valoración para un pedido, puede reseñar uno o varios productos del pedido en modo borrador y después:
+- cancelar (descarta todo el borrador), o
+- finalizar (persiste reseñas y bloquea nuevas reseñas en ese pedido).
+
+Además, se añadió visualización de reseñas de producto desde catálogo/detalle y desde mostrarProductosCategoria.
+
+2) FLUJO PASO A PASO
+2.1 Perfil > Histórico de pedidos.
+2.2 Si pedido está “entregado” y no reseñado: botón “Hacer reseña”.
+2.3 Vista de proceso de reseñas por pedido: lista de productos del pedido.
+2.4 Cada producto permite guardar reseña temporal (texto + valoración 1..5).
+2.5 “Cancelar valoración”: elimina borrador en sesión para ese pedido.
+2.6 “Finalizar valoración”: inserta todas las reseñas del borrador en BBDD y bloquea nueva reseña del mismo pedido.
+2.7 Si el pedido ya fue reseñado, no vuelve a permitir iniciar proceso.
+
+3) ARCHIVOS NUEVOS
+- includes/ResenaDAO.php
+- includes/ResenaService.php
+- vistas/resenas/proceso.php
+- vistas/resenas/ver.php
+- guia_funcionalidad_resenas.txt (este archivo)
+
+4) CADA ARCHIVO NUEVO: PROPÓSITO + CÓDIGO COMPLETO
+
+4.1 includes/ResenaDAO.php
+Propósito: capa SQL de reseñas (consulta de estado, productos reseñables, inserción y listado por producto).
+Código completo:
+(Ver archivo literal en proyecto: includes/ResenaDAO.php)
+
+4.2 includes/ResenaService.php
+Propósito: lógica de negocio del proceso (borrador en sesión, validaciones y finalización).
+Código completo:
+(Ver archivo literal en proyecto: includes/ResenaService.php)
+
+4.3 vistas/resenas/proceso.php
+Propósito: vista/controlador del flujo de reseñas por pedido (guardar producto, cancelar, finalizar).
+Código completo:
+(Ver archivo literal en proyecto: vistas/resenas/proceso.php)
+
+4.4 vistas/resenas/ver.php
+Propósito: mostrar reseñas de un producto (usuario, valoración, texto, fecha).
+Código completo:
+(Ver archivo literal en proyecto: vistas/resenas/ver.php)
+
+5) ARCHIVOS MODIFICADOS
+- includes/MySQL/02-tablas.sql
+- includes/PedidoDAO.php
+- vistas/usuarios/_pedidos_historico.php
+- vistas/productos/detalle_producto.php
+- vistas/productos/_tarjeta_producto.php
+- vistas/pedidos/_fila_producto_catalogo.php
+
+6) PARA CADA MODIFICADO: LÍNEAS, CONTEXTO, MOTIVO, CÓDIGO
+6.1 includes/MySQL/02-tablas.sql
+- Se añadió CREATE TABLE resenas con constraints y UNIQUE(usuario_id, producto_id, pedido_id).
+- Motivo: persistencia y validación de duplicados en BBDD.
+
+6.2 includes/PedidoDAO.php
+- Se añadió campo calculado ya_resenado en getPedidosHistoricoByUsuario mediante EXISTS sobre resenas.
+- Motivo: pintar botón “Hacer reseña” solo cuando corresponda.
+
+6.3 vistas/usuarios/_pedidos_historico.php
+- Se añadió lógica de acciones:
+  - “Hacer reseña” si estado entregado y !ya_resenado.
+  - “Reseñado” si ya está finalizado.
+- Motivo: integrar entrada al flujo en perfil.
+
+6.4 vistas/productos/detalle_producto.php
+- Se añadió botón “Ver reseñas”.
+
+6.5 vistas/productos/_tarjeta_producto.php
+- Se añadió botón “Ver reseñas” en listado por categoría (mostrarProductosCategoria).
+
+6.6 vistas/pedidos/_fila_producto_catalogo.php
+- Se añadió enlace “Ver reseñas” en catálogo (flujo desde carrito).
+
+7) CONSULTAS SQL IMPLEMENTADAS
+- CREATE TABLE resenas (..., CHECK valoracion BETWEEN 1 AND 5, UNIQUE(usuario_id, producto_id, pedido_id)).
+- SELECT para detectar si pedido ya reseñado por usuario.
+- SELECT productos de un pedido para reseñar.
+- INSERT de reseña final.
+- SELECT reseñas por producto con join a usuarios.
+- EXISTS en histórico para flag ya_resenado.
+
+8) VALIDACIONES DE DUPLICADOS
+- Nivel BBDD: UNIQUE(usuario_id, producto_id, pedido_id).
+- Nivel negocio: si pedidoYaResenadoPorUsuario=true, no se acepta seguir reseñando ni finalizar de nuevo.
+- Nivel borrador: cada producto en pedido se guarda por clave producto_id (sobrescribe borrador del mismo producto, no duplica).
+
+9) CANCELACIÓN Y FINALIZACIÓN
+- Cancelar: borra $_SESSION['resenas_borrador'][pedido_id].
+- Finalizar:
+  - exige al menos una reseña en borrador,
+  - revalida que el pedido no esté ya reseñado,
+  - inserta todas las reseñas del borrador,
+  - limpia borrador,
+  - al existir reseñas persistidas para ese pedido/usuario, queda bloqueado el reintento.
+
+10) VISUALIZACIÓN DE RESEÑAS
+- Nueva vista vistas/resenas/ver.php.
+- Muestra usuario, valoración numérica, texto y fecha.
+- Disponible desde:
+  - detalle de producto,
+  - catálogo (fila de producto),
+  - mostrarProductosCategoria (tarjeta de producto de gerente).
+
+NOTA DE REPLICACIÓN EN OTRO PROYECTO
+- Mantener siempre doble barrera de integridad (validación en aplicación + índice UNIQUE en BBDD).
+- Para “proceso no finalizado”, usar estado temporal en sesión o tabla borrador dedicada.
+- Bloqueo de re-reseña por pedido se puede representar por “existencia de cualquier reseña en ese pedido por ese usuario” o por un estado explícito de proceso en una tabla adicional.

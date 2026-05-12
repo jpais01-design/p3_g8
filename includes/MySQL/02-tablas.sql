@@ -149,4 +149,20 @@ CREATE TABLE IF NOT EXISTS `ofertas_en_pedido` (
 
 
 
+
+CREATE TABLE IF NOT EXISTS `resenas` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `usuario_id` INT NOT NULL,
+    `producto_id` INT NOT NULL,
+    `pedido_id` INT NOT NULL,
+    `texto` TEXT,
+    `valoracion` TINYINT NOT NULL,
+    `fecha_creacion` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`producto_id`) REFERENCES `productos`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `chk_resenas_valoracion` CHECK (`valoracion` BETWEEN 1 AND 5),
+    UNIQUE (`usuario_id`, `producto_id`, `pedido_id`)
+);
+
 SET FOREIGN_KEY_CHECKS=1;

@@ -48,6 +48,7 @@ ob_start();
                 <p class="precio-final">Precio Final: <?= number_format((float)$producto->getPrecioFinal(), 2) ?> €</p>
                 
                 <div class="actions-inline mt-14">
+                    <a href="<?= RUTA_APP ?>/vistas/resenas/ver.php?producto_id=<?= (int)$producto->getId() ?>" class="btn">Ver reseñas</a>
                     <a href="javascript:history.back()" class="btn">← Volver</a>
                 </div>
             </div>
