@@ -54,7 +54,8 @@ class PedidoDAO
         array $lineas,
         array $ofertas,
         float $total_sin_descuentos,
-        float $total_descuento
+        float $total_descuento,
+        ?int $mesa_id = null
     ): int {
         global $conn;
 
@@ -65,6 +66,10 @@ class PedidoDAO
         try {
             $numero = self::obtenerSiguienteNumeroDelDia();
             $pedido_id = self::crearPedidoFormal($numero, $estado, $tipo, $metodo_pago, $usuario_id, $total_sin_descuentos, $total_descuento);
+
+            if ($tipo === 'local' && $mesa_id !== null) {
+                self::asignarMesaAPedido($pedido_id, $mesa_id);
+            }
 
             require_once __DIR__ . '/ProductoDAO.php';
             require_once __DIR__ . '/OfertaEnPedidoDAO.php';
@@ -116,7 +121,8 @@ class PedidoDAO
         string $metodo_pago,
         int $usuario_id,
         float $total_sin_descuentos,
-        float $total_descuento
+        float $total_descuento,
+        ?int $mesa_id = null
     ): int {
         global $conn;
 
@@ -488,6 +494,41 @@ class PedidoDAO
         return $ok;
     }
 
+    public static function getMesasDisponibles()
+    {
+        global $conn;
+
+        $stmt = $conn->prepare("SELECT id, numero_mesa, capacidad_ocupantes FROM mesas WHERE ocupada = 0 ORDER BY numero_mesa ASC");
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $mesas = $result->fetch_all(MYSQLI_ASSOC);
+        $result->free();
+        $stmt->close();
+
+        return $mesas;
+    }
+
+    public static function asignarMesaAPedido(int $pedido_id, int $mesa_id): bool
+    {
+        global $conn;
+
+        $stmt = $conn->prepare("INSERT INTO pedidos_mesa (id_mesa, id_pedido) VALUES (?, ?)");
+        $stmt->bind_param("ii", $mesa_id, $pedido_id);
+        $ok = $stmt->execute();
+        $stmt->close();
+
+        if (!$ok) {
+            return false;
+        }
+
+        $stmt2 = $conn->prepare("UPDATE mesas SET ocupada = 1 WHERE id = ?");
+        $stmt2->bind_param("i", $mesa_id);
+        $ok2 = $stmt2->execute();
+        $stmt2->close();
+
+        return $ok2;
+    }
+
     public static function getPedidosPendientesGerente()
     {
     global $conn;
@@ -499,10 +540,13 @@ class PedidoDAO
                 uc.avatar_valor AS avatar_valor,
                 um.nombre AS camarero_nombre,
                 um.apellidos AS camarero_apellidos,
-                um.avatar_valor AS camarero_avatar_valor
+                um.avatar_valor AS camarero_avatar_valor,
+                m.numero_mesa
               FROM pedidos p
               LEFT JOIN usuarios uc ON p.cocinero_id = uc.id
               LEFT JOIN usuarios um ON p.camarero_id = um.id
+              LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+              LEFT JOIN mesas m ON m.id = pm.id_mesa
               WHERE p.estado IN ('recibido', 'en_preparacion', 'cocinando', 'listo_cocina', 'terminado')
               ORDER BY p.fecha_hora ASC";
 
