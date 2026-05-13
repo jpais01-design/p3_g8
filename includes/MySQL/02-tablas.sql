@@ -165,4 +165,11 @@ CREATE TABLE IF NOT EXISTS `resenas` (
     UNIQUE (`usuario_id`, `producto_id`, `pedido_id`)
 );
 
+CREATE TABLE IF NOT EXISTS `incidencias` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `pedido_id` INT NOT NULL,
+    `incidencia` VARCHAR(1000) NOT NULL,
+    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE
+);
+
 SET FOREIGN_KEY_CHECKS=1;

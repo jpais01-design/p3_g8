@@ -512,3 +512,66 @@ Para localizar rápido cada pieza usa `nl -ba <ruta>`.
 Nota importante:
 - Si editas estos archivos en el futuro, los números de línea pueden moverse.
 - Recalcula con `nl -ba` para obtener la posición exacta actualizada.
+
+
+ANEXO: AMPLIACIÓN CON SISTEMA DE INCIDENCIAS
+=============================================
+
+Objetivo
+--------
+Añadir una segunda funcionalidad paralela al flujo de reseñas para que el cliente,
+desde el mismo proceso de valoración del pedido, pueda registrar una incidencia
+relacionada con el pedido. Además, habilitar a gerencia un listado global de incidencias.
+
+A) Ficheros creados (incidencias)
+---------------------------------
+A.1) includes/IncidenciaDAO.php
+- Inserta incidencias.
+- Lista incidencias por pedido.
+- Lista historial completo con datos de pedido y usuario para gerente.
+
+A.2) includes/IncidenciaService.php
+- Gestiona borrador de incidencia por pedido en sesión.
+- Permite guardar/cancelar/finalizar (persistir al confirmar valoración).
+
+A.3) vistas/preparacion_pedidos/incidencias.php
+- Nueva pantalla de gerente con historial de incidencias y pedido asociado.
+
+B) Ficheros modificados (incidencias)
+--------------------------------------
+B.1) includes/MySQL/02-tablas.sql
+Se añadió la tabla:
+
+CREATE TABLE IF NOT EXISTS `incidencias` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `pedido_id` INT NOT NULL,
+    `incidencia` VARCHAR(1000) NOT NULL,
+    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE
+);
+
+B.2) vistas/resenas/proceso.php
+- Se integra formulario de incidencia (opcional) en el mismo flujo.
+- Nueva acción POST `guardar_incidencia` para borrador.
+- En `cancelar`: limpia también borrador de incidencia.
+- En `finalizar`: si hay incidencia en borrador, la persiste.
+
+B.3) vistas/preparacion_pedidos/panel_gerente.php
+- Se añade botón `Ver incidencias` que enlaza a la nueva vista de histórico.
+
+C) Resumen de flujo de incidencias
+----------------------------------
+1. Cliente abre “Hacer reseña” de un pedido entregado.
+2. En esa pantalla, opcionalmente rellena “Incidencia del pedido”.
+3. Puede guardar incidencia en borrador.
+4. Si cancela todo el proceso, se borra también el borrador de incidencia.
+5. Si finaliza valoración, se guardan reseñas y también la incidencia (si existe texto).
+6. Gerente accede a “Ver incidencias” desde panel y consulta el histórico completo.
+
+D) Mapa rápido de líneas (incidencias)
+---------------------------------------
+- includes/IncidenciaDAO.php: archivo completo.
+- includes/IncidenciaService.php: archivo completo.
+- vistas/resenas/proceso.php: requires + acción guardar_incidencia + formulario + finalizar/cancelar.
+- includes/MySQL/02-tablas.sql: bloque CREATE TABLE incidencias.
+- vistas/preparacion_pedidos/panel_gerente.php: botón Ver incidencias.
+- vistas/preparacion_pedidos/incidencias.php: vista de historial para gerente.
