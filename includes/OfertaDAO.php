@@ -18,6 +18,16 @@ class OfertaDAO
             $result->free();
         }
 
+        if (!$cache) {
+            // Compatibilidad automática en instalaciones antiguas
+            $conn->query("ALTER TABLE ofertas ADD COLUMN es_menu_dia TINYINT(1) NOT NULL DEFAULT 0");
+            $retry = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+            $cache = $retry && $retry->num_rows > 0;
+            if ($retry) {
+                $retry->free();
+            }
+        }
+
         return $cache;
     }
 
