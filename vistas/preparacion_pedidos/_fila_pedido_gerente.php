@@ -103,6 +103,10 @@ $pedido_cerrado = in_array($p['estado'], ['terminado', 'entregado'], true);
         <?php endif; ?>
     </td>
     
+    <td data-label="Mesa" class="celda-centrada">
+        <?= isset($p['numero_mesa']) && $p['numero_mesa'] !== null ? ('Mesa #' . (int) $p['numero_mesa']) : '-' ?>
+    </td>
+
     <td data-label="Productos" class="celda-centrada">
         <ul class="lista-productos-gerente">
             <?php foreach ($productos as $prod): ?>

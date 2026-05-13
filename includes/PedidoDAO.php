@@ -2,6 +2,7 @@
 require_once __DIR__ . '/application.php';
 require_once __DIR__ . '/../entities/Pedido.php';
 require_once __DIR__ . '/../entities/ProductoPedido.php';
+require_once __DIR__ . '/MesaService.php';
 
 class PedidoDAO
 {
@@ -54,7 +55,8 @@ class PedidoDAO
         array $lineas,
         array $ofertas,
         float $total_sin_descuentos,
-        float $total_descuento
+        float $total_descuento,
+        ?int $mesa_id = null
     ): int {
         global $conn;
 
@@ -96,6 +98,10 @@ class PedidoDAO
                 );
             }
 
+            if ($tipo === 'local' && $mesa_id !== null) {
+                MesaService::asignarMesaAPedido($pedido_id, $mesa_id);
+            }
+
             if (!$requiereCocina && $estado === 'en_preparacion') {
                 self::updateEstadoSimple($pedido_id, 'listo_cocina');
             }
@@ -116,7 +122,8 @@ class PedidoDAO
         string $metodo_pago,
         int $usuario_id,
         float $total_sin_descuentos,
-        float $total_descuento
+        float $total_descuento,
+        ?int $mesa_id = null
     ): int {
         global $conn;
 
@@ -365,9 +372,11 @@ class PedidoDAO
         global $conn;
 
         $stmt = $conn->prepare(
-            "SELECT p.*, u.nombre AS cliente_nombre, u.username
+            "SELECT p.*, u.nombre AS cliente_nombre, u.username, m.numero_mesa
              FROM pedidos p
              LEFT JOIN usuarios u ON p.usuario_id = u.id
+             LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+             LEFT JOIN mesas m ON m.id = pm.id_mesa
              WHERE p.estado = ?
              ORDER BY p.fecha_hora ASC"
         );
@@ -499,10 +508,13 @@ class PedidoDAO
                 uc.avatar_valor AS avatar_valor,
                 um.nombre AS camarero_nombre,
                 um.apellidos AS camarero_apellidos,
-                um.avatar_valor AS camarero_avatar_valor
+                um.avatar_valor AS camarero_avatar_valor,
+                m.numero_mesa
               FROM pedidos p
               LEFT JOIN usuarios uc ON p.cocinero_id = uc.id
               LEFT JOIN usuarios um ON p.camarero_id = um.id
+              LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+              LEFT JOIN mesas m ON m.id = pm.id_mesa
               WHERE p.estado IN ('recibido', 'en_preparacion', 'cocinando', 'listo_cocina', 'terminado')
               ORDER BY p.fecha_hora ASC";
 

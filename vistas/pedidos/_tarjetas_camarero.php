@@ -21,6 +21,9 @@ else:
                 <p><strong>Cliente:</strong> <?= escaparHtml($p['cliente_nombre']) ?></p>
                 <p><strong>Hora:</strong> <?= escaparHtml(substr($p['fecha_hora'], 11, 5)) ?></p>
                 <p><strong>Total:</strong> <?= escaparHtml($p['total']) ?> €</p>
+                <?php if ($p['tipo'] === 'local'): ?>
+                    <p><strong>Mesa:</strong> <?= isset($p['numero_mesa']) && $p['numero_mesa'] !== null ? ('#' . (int) $p['numero_mesa']) : 'Sin asignar' ?></p>
+                <?php endif; ?>
             </div>
 
             <?php

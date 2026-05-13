@@ -149,4 +149,21 @@ CREATE TABLE IF NOT EXISTS `ofertas_en_pedido` (
 
 
 
+
+CREATE TABLE IF NOT EXISTS `mesas` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `numero_mesa` INT NOT NULL UNIQUE,
+    `capacidad_ocupantes` INT NOT NULL,
+    `ocupada` TINYINT(1) NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS `pedidos_mesa` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `id_mesa` INT NOT NULL,
+    `id_pedido` INT NOT NULL,
+    FOREIGN KEY (`id_mesa`) REFERENCES `mesas`(`id`),
+    FOREIGN KEY (`id_pedido`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+    UNIQUE (`id_pedido`)
+);
+
 SET FOREIGN_KEY_CHECKS=1;

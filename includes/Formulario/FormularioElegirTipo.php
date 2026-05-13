@@ -37,6 +37,11 @@ HTML;
 
         \PedidoService::iniciarCarrito($tipo);
 
+        if ($tipo === 'local') {
+            header("Location: " . RUTA_APP . "/vistas/pedidos/elegirMesa.php");
+            exit;
+        }
+
         header("Location: " . RUTA_APP . "/vistas/pedidos/catalogo.php");
         exit;
     }
