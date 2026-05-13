@@ -23,6 +23,10 @@ ob_start();
 </div>
 
 <div class="panel">
+    <a href="incidencias.php" class="btn">Ver incidencias</a>
+</div>
+
+<div class="panel">
     <h3>📊 Todos los Pedidos Pendientes</h3>
 
     <div class="table-wrap">

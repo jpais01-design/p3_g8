@@ -6,7 +6,7 @@
         <div class="table-wrap">
             <table class="w-full">
                 <thead>
-                    <tr><th>Nº</th><th>Fecha</th><th>Tipo</th><th>Total</th><th>Estado</th><th>BistroCoins</th><th></th></tr>
+                    <tr><th>Nº</th><th>Fecha</th><th>Tipo</th><th>Total</th><th>Estado</th><th>BistroCoins</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     <tr><td colspan="7" class="muted">Sin datos reales todavía.</td></tr>
@@ -19,7 +19,7 @@
         <div class="table-wrap">
             <table class="w-full">
                 <thead>
-                    <tr><th>Nº</th><th>Fecha</th><th>Tipo</th><th>Total</th><th>Estado</th><th>BistroCoins</th><th></th></tr>
+                    <tr><th>Nº</th><th>Fecha</th><th>Tipo</th><th>Total</th><th>Estado</th><th>BistroCoins</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     <?php foreach ($pedidosHistorico as $p): ?>
@@ -32,6 +32,11 @@
                             <td>+<?= (int)($p['bistrocoins_generados'] ?? 0) ?> / -<?= (int)($p['bistrocoins_gastados'] ?? 0) ?></td>
                             <td>
                                 <a class="btn small" href="<?= RUTA_APP ?>/vistas/pedidos/estadoPedido.php?id=<?= (int) $p['id'] ?>">Ver detalle</a>
+                                <?php if ((string)$p['estado'] === 'entregado' && empty($p['ya_resenado'])): ?>
+                                    <a class="btn small" href="<?= RUTA_APP ?>/vistas/resenas/proceso.php?pedido_id=<?= (int) $p['id'] ?>">Hacer reseña</a>
+                                <?php elseif (!empty($p['ya_resenado'])): ?>
+                                    <span class="muted">Reseñado</span>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endforeach; ?>

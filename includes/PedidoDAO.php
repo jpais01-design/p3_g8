@@ -558,9 +558,10 @@ class PedidoDAO
         global $conn;
 
         $sql = "
-                        SELECT id, numero_pedido, fecha_hora, tipo, total, estado, bistrocoins_generados, bistrocoins_gastados
-            FROM pedidos
-            WHERE usuario_id = ?
+                        SELECT p.id, p.numero_pedido, p.fecha_hora, p.tipo, p.total, p.estado, p.bistrocoins_generados, p.bistrocoins_gastados,
+                   EXISTS(SELECT 1 FROM resenas r WHERE r.pedido_id = p.id AND r.usuario_id = p.usuario_id) AS ya_resenado
+            FROM pedidos p
+            WHERE p.usuario_id = ?
               AND estado != 'nuevo'
             ORDER BY fecha_hora DESC
             LIMIT 15

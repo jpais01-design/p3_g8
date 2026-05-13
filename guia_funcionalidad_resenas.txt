@@ -1,0 +1,394 @@
+GUÍA COMPLETA: RESEÑAS + INCIDENCIAS (POO) CON MAPA DE LÍNEAS Y CONTEXTO
+=========================================================================
+
+Objetivo general
+----------------
+Esta guía documenta la implementación actual de:
+1) Reseñas por pedido (con borrador, cancelar y finalizar).
+2) Incidencias por pedido (con borrador, cancelar y finalizar en el mismo flujo).
+3) Visualización de reseñas en producto y listado de incidencias para gerente.
+4) Refactorización a Programación Orientada a Objetos (entidades + DAOs hidratando objetos).
+
+La guía está escrita con:
+- archivos creados,
+- archivos modificados,
+- código y fragmentos,
+- contexto exacto de inserción,
+- líneas actuales de referencia.
+
+
+============================================================
+1) FICHEROS CREADOS (RESEÑAS + INCIDENCIAS + POO)
+============================================================
+
+1.1) entities/Resena.php
+------------------------
+Propósito:
+- Entidad de dominio para una reseña.
+- Encapsula atributos y expone getters usados en vistas.
+
+Líneas actuales:
+- Clase completa: 1-29
+- Constructor: 13-23
+- Getters usados en vistas: 25-28
+
+Código completo:
+
+<?php
+class Resena
+{
+    private int $id;
+    private int $usuario_id;
+    private int $producto_id;
+    private int $pedido_id;
+    private string $texto;
+    private int $valoracion;
+    private string $fecha_creacion;
+    private string $username;
+
+    public function __construct(int $id, int $usuario_id, int $producto_id, int $pedido_id, string $texto, int $valoracion, string $fecha_creacion, string $username = '')
+    {
+        $this->id = $id;
+        $this->usuario_id = $usuario_id;
+        $this->producto_id = $producto_id;
+        $this->pedido_id = $pedido_id;
+        $this->texto = $texto;
+        $this->valoracion = $valoracion;
+        $this->fecha_creacion = $fecha_creacion;
+        $this->username = $username;
+    }
+
+    public function getTexto(): string { return $this->texto; }
+    public function getValoracion(): int { return $this->valoracion; }
+    public function getFechaCreacion(): string { return $this->fecha_creacion; }
+    public function getUsername(): string { return $this->username; }
+}
+
+
+1.2) entities/Incidencia.php
+----------------------------
+Propósito:
+- Entidad de dominio para incidencias.
+- Se usa en el listado de gerente y consultas por pedido.
+
+Líneas actuales:
+- Clase completa: 1-27
+- Constructor: 11-19
+- Getters usados en vista de gerente: 21-26
+
+Código completo:
+
+<?php
+class Incidencia
+{
+    private int $id;
+    private int $pedido_id;
+    private string $incidencia;
+    private string $numero_pedido;
+    private string $fecha_hora;
+    private string $username;
+
+    public function __construct(int $id, int $pedido_id, string $incidencia, string $numero_pedido = '', string $fecha_hora = '', string $username = '')
+    {
+        $this->id = $id;
+        $this->pedido_id = $pedido_id;
+        $this->incidencia = $incidencia;
+        $this->numero_pedido = $numero_pedido;
+        $this->fecha_hora = $fecha_hora;
+        $this->username = $username;
+    }
+
+    public function getId(): int { return $this->id; }
+    public function getPedidoId(): int { return $this->pedido_id; }
+    public function getIncidencia(): string { return $this->incidencia; }
+    public function getNumeroPedido(): string { return $this->numero_pedido; }
+    public function getFechaHora(): string { return $this->fecha_hora; }
+    public function getUsername(): string { return $this->username; }
+}
+
+
+1.3) includes/ResenaDAO.php
+---------------------------
+Propósito:
+- Acceso a datos de reseñas.
+- Mezcla consultas de control de flujo + listado de reseñas hidratadas a objeto.
+
+Líneas clave:
+- Imports: 2-3
+- pedidoYaResenadoPorUsuario: 7-18
+- getProductosResenablesPedido: 20-40
+- insertarResena: 42-53
+- getResenasByProducto (hidrata Resena): 55-75
+
+Contexto de cambio (POO):
+- `getResenasByProducto()` antes devolvía arrays asociativos; ahora devuelve `Resena[]`.
+
+
+1.4) includes/ResenaService.php
+-------------------------------
+Propósito:
+- Lógica de negocio de reseñas (borrador por pedido en sesión).
+
+Líneas clave:
+- Inicialización sesión borrador: 6-14
+- Guardar borrador producto: 16-36
+- Cancelación: 44-48
+- Finalización e inserción definitiva: 50-69
+
+
+1.5) includes/IncidenciaDAO.php
+--------------------------------
+Propósito:
+- Acceso a datos de incidencias.
+- Devuelve objetos `Incidencia`.
+
+Líneas clave:
+- Imports: 2-3
+- insertarIncidencia: 7-15
+- getIncidenciasByPedido (hidrata Incidencia): 17-31
+- getAllConPedido (historial gerente): 33-48
+
+Contexto de cambio (POO):
+- `getAllConPedido()` y `getIncidenciasByPedido()` usan `new Incidencia(...)`.
+
+
+1.6) includes/IncidenciaService.php
+-----------------------------------
+Propósito:
+- Lógica de borrador/finalización de incidencias en sesión.
+
+Líneas clave:
+- Sesión de incidencias: 6-14
+- Guardar borrador: 16-20
+- Obtener borrador: 22-26
+- Cancelar borrador: 28-32
+- Finalizar y persistir: 34-42
+
+
+1.7) vistas/resenas/proceso.php
+--------------------------------
+Propósito:
+- Flujo principal donde el usuario reseña productos y puede adjuntar incidencia.
+
+Líneas clave:
+- Requiere servicios/DAOs: 2-9
+- Validación de propiedad/estado del pedido: 15-19
+- Acciones POST:
+  - guardar_producto: 23-28
+  - guardar_incidencia: 29-33
+  - cancelar (reseña+incidencia): 34-37
+  - finalizar (reseñas + incidencia): 38-46
+- Formulario incidencia: 86-95
+- Botones cancelar/finalizar: 97-108
+
+Contexto de modificación:
+- Se añadió acción `guardar_incidencia` y persistencia en `finalizar`.
+
+
+1.8) vistas/resenas/ver.php
+----------------------------
+Propósito:
+- Mostrar reseñas de un producto.
+
+Líneas clave:
+- Carga reseñas: 13
+- Render orientado a objeto: 25-31
+
+Contexto de modificación (POO):
+- Sustitución de `$r['campo']` por getters (`$r->getCampo()`).
+
+
+1.9) vistas/preparacion_pedidos/incidencias.php
+------------------------------------------------
+Propósito:
+- Historial global de incidencias para gerente.
+
+Líneas clave:
+- Carga incidencias: 8
+- Render de tabla: 20-46
+- Render orientado a objeto: 36-40
+
+Contexto de modificación (POO):
+- Sustitución de acceso por array a acceso por getters de `Incidencia`.
+
+
+====================================================================
+2) FICHEROS MODIFICADOS (BASE DE DATOS + INTEGRACIÓN EN VISTAS)
+====================================================================
+
+2.1) includes/MySQL/02-tablas.sql
+----------------------------------
+Modificación 1: tabla `resenas`
+- Contexto: tras tablas funcionales previas, antes del cierre de FK checks.
+- Líneas actuales: 153-166
+
+Bloque:
+CREATE TABLE IF NOT EXISTS `resenas` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `usuario_id` INT NOT NULL,
+    `producto_id` INT NOT NULL,
+    `pedido_id` INT NOT NULL,
+    `texto` TEXT,
+    `valoracion` TINYINT NOT NULL,
+    `fecha_creacion` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`usuario_id`) REFERENCES `usuarios`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`producto_id`) REFERENCES `productos`(`id`) ON DELETE CASCADE,
+    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+    CONSTRAINT `chk_resenas_valoracion` CHECK (`valoracion` BETWEEN 1 AND 5),
+    UNIQUE (`usuario_id`, `producto_id`, `pedido_id`)
+);
+
+Modificación 2: tabla `incidencias`
+- Contexto: inmediatamente después de `resenas`.
+- Líneas actuales: 168-173
+
+Bloque:
+CREATE TABLE IF NOT EXISTS `incidencias` (
+    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    `pedido_id` INT NOT NULL,
+    `incidencia` VARCHAR(1000) NOT NULL,
+    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE
+);
+
+
+2.2) includes/PedidoDAO.php
+----------------------------
+Modificación:
+- Se añadió `ya_resenado` en histórico de pedidos para controlar UI.
+- Contexto: método `getPedidosHistoricoByUsuario`.
+- Líneas actuales clave: 561-563
+
+Fragmento:
+EXISTS(SELECT 1 FROM resenas r WHERE r.pedido_id = p.id AND r.usuario_id = p.usuario_id) AS ya_resenado
+
+
+2.3) vistas/usuarios/_pedidos_historico.php
+--------------------------------------------
+Modificación:
+- Botón "Hacer reseña" + etiqueta "Reseñado" en histórico.
+- Contexto: celda de acciones por fila de pedido.
+- Líneas actuales clave: 35-39
+
+Fragmento:
+<?php if ((string)$p['estado'] === 'entregado' && empty($p['ya_resenado'])): ?>
+    <a class="btn small" href="<?= RUTA_APP ?>/vistas/resenas/proceso.php?pedido_id=<?= (int) $p['id'] ?>">Hacer reseña</a>
+<?php elseif (!empty($p['ya_resenado'])): ?>
+    <span class="muted">Reseñado</span>
+<?php endif; ?>
+
+
+2.4) vistas/pedidos/listarPedidosCliente.php
+---------------------------------------------
+Modificación:
+- Mismo comportamiento de “Hacer reseña” en listado de pedidos del cliente.
+- Contexto: columna de acciones en la tabla.
+- Líneas actuales clave: 100-105
+
+Fragmento:
+<?php $yaResenadoPedido = ResenaDAO::pedidoYaResenadoPorUsuario((int)$user->getId(), (int)$p->getId()); ?>
+<?php if (!$esGerenteConsultando && $p->getEstado() === 'entregado' && !$yaResenadoPedido): ?>
+  <a href="<?= RUTA_APP ?>/vistas/resenas/proceso.php?pedido_id=<?= (int)$p->getId() ?>" class="btn small">Hacer reseña</a>
+<?php elseif (!$esGerenteConsultando && $yaResenadoPedido): ?>
+  <span class="muted">Reseñado</span>
+<?php endif; ?>
+
+
+2.5) vistas/productos/detalle_producto.php
+-------------------------------------------
+Modificación:
+- Enlace a ver reseñas.
+- Contexto: bloque de acciones del detalle.
+- Línea actual clave: 51
+
+2.6) vistas/productos/_tarjeta_producto.php
+--------------------------------------------
+Modificación:
+- Enlace a ver reseñas en tarjeta de producto.
+- Contexto: tras botón “Editar”.
+- Líneas actuales clave: 50-52
+
+2.7) vistas/preparacion_pedidos/panel_gerente.php
+--------------------------------------------------
+Modificación:
+- Nuevo botón “Ver incidencias”.
+- Contexto: panel superior de acciones gerente.
+- Línea actual clave: 26
+
+
+=====================================
+3) FLUJO FINAL (RESEÑAS + INCIDENCIAS)
+=====================================
+
+3.1) Flujo reseñas
+- Entrada: histórico/listado de pedidos.
+- Condición: pedido entregado y no reseñado.
+- En proceso:
+  - guardar reseñas por producto en borrador de sesión,
+  - cancelar: borra borrador,
+  - finalizar: inserta reseñas y bloquea repetición por `UNIQUE` + validación.
+
+3.2) Flujo incidencias
+- Entrada: misma pantalla `vistas/resenas/proceso.php`.
+- Incidencia opcional del pedido:
+  - guardar borrador,
+  - cancelar proceso: borra borrador incidencia,
+  - finalizar: persiste incidencia si hay texto.
+
+3.3) Flujo gerente
+- Panel gerente -> botón “Ver incidencias” -> tabla historial con pedido asociado.
+
+
+====================================================
+4) PARTE DE INCIDENCIAS AL MISMO NIVEL QUE RESEÑAS
+====================================================
+
+Resumen técnico equivalente (simetría funcional):
+- Persistencia:
+  - Reseñas: tabla `resenas`.
+  - Incidencias: tabla `incidencias`.
+- Capa DAO:
+  - Reseñas: `ResenaDAO`.
+  - Incidencias: `IncidenciaDAO`.
+- Capa Service (borrador sesión):
+  - Reseñas: `ResenaService`.
+  - Incidencias: `IncidenciaService`.
+- Vista de proceso:
+  - Reseñas por producto + incidencia opcional integradas en `vistas/resenas/proceso.php`.
+- Visualización:
+  - Reseñas por producto: `vistas/resenas/ver.php`.
+  - Incidencias global gerente: `vistas/preparacion_pedidos/incidencias.php`.
+- POO en presentación:
+  - Reseñas e incidencias se renderizan con getters de entidad.
+
+
+=================================================
+5) MAPA GLOBAL DE LÍNEAS (ESTADO ACTUAL PROYECTO)
+=================================================
+
+RESEÑAS
+- entities/Resena.php: 1-29
+- includes/ResenaDAO.php: 1-76
+- includes/ResenaService.php: 1-70
+- vistas/resenas/proceso.php: 1-114
+- vistas/resenas/ver.php: 1-39
+- includes/PedidoDAO.php (flag ya_resenado): 561-563
+- vistas/usuarios/_pedidos_historico.php (acciones): 35-39
+- vistas/pedidos/listarPedidosCliente.php (acciones): 100-105
+- vistas/productos/detalle_producto.php (ver reseñas): 51
+- vistas/productos/_tarjeta_producto.php (ver reseñas): 50-52
+
+INCIDENCIAS
+- entities/Incidencia.php: 1-27
+- includes/IncidenciaDAO.php: 1-49
+- includes/IncidenciaService.php: 1-43
+- includes/MySQL/02-tablas.sql (tabla incidencias): 168-173
+- vistas/resenas/proceso.php (guardar/cancelar/finalizar incidencia): 29-33, 35, 41, 86-95
+- vistas/preparacion_pedidos/panel_gerente.php (botón): 26
+- vistas/preparacion_pedidos/incidencias.php: 1-50
+
+
+Nota de mantenimiento
+---------------------
+Si mueves o editas archivos, recalcula líneas con:
+- `nl -ba <ruta_fichero>`
+

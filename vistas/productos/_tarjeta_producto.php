@@ -45,6 +45,12 @@ href="crearProducto.php?id=<?= (int)$p->getId() ?>&categoria_id=<?= (int)$catego
 Editar
 </a>
 
+
+
+<a class="btn" href="<?= RUTA_APP ?>/vistas/resenas/ver.php?producto_id=<?= (int)$p->getId() ?>">
+Ver reseñas
+</a>
+
 </div>
 
 </div>

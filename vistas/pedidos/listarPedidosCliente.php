@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../includes/util.php';
 require_once __DIR__ . '/../../entities/Pedido.php';
 require_once __DIR__ . '/../../includes/UsuarioDAO.php';
 require_once __DIR__ . '/../../includes/PedidoService.php';
+require_once __DIR__ . '/../../includes/ResenaDAO.php';
 
 $user = require_login();
 $usuarioIdConsulta = isset($_GET['usuario_id']) ? (int)$_GET['usuario_id'] : (int)$user->getId();
@@ -96,6 +97,12 @@ ob_start();
                 <a href="estadoPedido.php?id=<?= (int)$p->getId() ?><?= $esGerenteConsultando ? '&usuario_id=' . $usuarioIdConsulta : '' ?>" class="btn small">
                   Ver detalle
                 </a>
+                <?php $yaResenadoPedido = ResenaDAO::pedidoYaResenadoPorUsuario((int)$user->getId(), (int)$p->getId()); ?>
+                <?php if (!$esGerenteConsultando && $p->getEstado() === 'entregado' && !$yaResenadoPedido): ?>
+                  <a href="<?= RUTA_APP ?>/vistas/resenas/proceso.php?pedido_id=<?= (int)$p->getId() ?>" class="btn small">Hacer reseña</a>
+                <?php elseif (!$esGerenteConsultando && $yaResenadoPedido): ?>
+                  <span class="muted">Reseñado</span>
+                <?php endif; ?>
               </td>
             </tr>
           <?php endforeach; ?>
