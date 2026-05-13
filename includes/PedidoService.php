@@ -4,6 +4,7 @@ require_once __DIR__ . '/../entities/Producto.php';
 require_once __DIR__ . '/ProductoDAO.php';
 require_once __DIR__ . '/OfertaEnPedidoDAO.php';
 require_once __DIR__ . '/PedidoDAO.php';
+require_once __DIR__ . '/MesaService.php';
 require_once __DIR__ . '/OfertaDAO.php';
 require_once __DIR__ . '/OfertaService.php';
 
@@ -23,6 +24,10 @@ class PedidoService
             $_SESSION['carrito']['tipo'] = null;
         }
 
+        if (!isset($_SESSION['carrito']['mesa_id'])) {
+            $_SESSION['carrito']['mesa_id'] = null;
+        }
+
         if (!isset($_SESSION['carrito']['items']) || !is_array($_SESSION['carrito']['items'])) {
             $_SESSION['carrito']['items'] = [];
         }
@@ -38,6 +43,7 @@ class PedidoService
 
         $_SESSION['carrito'] = [
             'tipo' => $tipo,
+            'mesa_id' => null,
             'items' => [],
             'ofertas' => [],
         ];
@@ -51,6 +57,23 @@ class PedidoService
         self::asegurarCarritoSesion();
 
         return $_SESSION['carrito']['tipo'] ?? null;
+    }
+
+    public static function setMesaCarrito(int $mesa_id): void
+    {
+        self::asegurarCarritoSesion();
+        $_SESSION['carrito']['mesa_id'] = $mesa_id;
+    }
+
+    public static function getMesaCarrito(): ?int
+    {
+        self::asegurarCarritoSesion();
+        return isset($_SESSION['carrito']['mesa_id']) ? (int) $_SESSION['carrito']['mesa_id'] : null;
+    }
+
+    public static function getMesasDisponibles(): array
+    {
+        return MesaService::getMesasDisponibles();
     }
 
     public static function carritoTieneTipo(): bool
@@ -262,7 +285,8 @@ class PedidoService
 
         $estado = ($metodo_pago === 'tarjeta') ? 'en_preparacion' : 'recibido';
 
-        $pedido_id = PedidoDAO::guardarPedidoCompleto($usuario_id, $metodo_pago, $tipo, $estado, $lineas, $ofertas, $total_sin_descuentos, $total_descuento);
+        $mesa_id = isset($carrito['mesa_id']) ? (int) $carrito['mesa_id'] : null;
+        $pedido_id = PedidoDAO::guardarPedidoCompleto($usuario_id, $metodo_pago, $tipo, $estado, $lineas, $ofertas, $total_sin_descuentos, $total_descuento, $mesa_id);
 
         $_SESSION['ultimo_pedido_id'] = $pedido_id;
         self::limpiarCarrito();

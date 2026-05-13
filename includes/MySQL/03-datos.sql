@@ -108,3 +108,12 @@ INSERT INTO `recompensas` (`producto_id`, `bistrocoins`, `activa`) VALUES
 (16, 12, 1);
 
 UPDATE productos SET se_cocina = 0 WHERE categoria_id = 4;
+
+
+INSERT INTO `mesas` (`numero_mesa`, `capacidad_ocupantes`, `ocupada`) VALUES
+(1, 2, 0),
+(2, 2, 0),
+(3, 4, 0),
+(4, 4, 0),
+(5, 6, 0),
+(6, 8, 0);

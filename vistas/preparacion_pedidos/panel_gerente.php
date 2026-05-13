@@ -33,6 +33,7 @@ ob_start();
                     <th>Estado</th>
                     <th>Cocinero Asignado</th>
                     <th>Camarero Asignado</th>
+                    <th>Mesa</th>
                     <th>Productos</th>
                 </tr>
             </thead>
@@ -40,7 +41,7 @@ ob_start();
             <tbody>
                 <?php if (empty($pedidos)): ?>
                     <tr>
-                        <td colspan="5" class="tabla-panel-vacia" data-label="">
+                        <td colspan="6" class="tabla-panel-vacia" data-label="">
                             No hay pedidos pendientes en este momento.
                         </td>
                     </tr>
