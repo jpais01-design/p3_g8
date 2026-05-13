@@ -50,6 +50,11 @@ class FormularioOferta extends Formulario
         $descuento = $datos['descuento']
             ?? ($this->oferta ? $this->oferta->getDescuento() : 0);
 
+        $esMenuDia = isset($datos['es_menu_dia'])
+            ? (bool)$datos['es_menu_dia']
+            : ($this->oferta ? $this->oferta->esMenuDia() : false);
+        $esMenuDiaChecked = $esMenuDia ? 'checked' : '';
+
         
         // ─────────────────────────────────────
         // PRODUCTOS DISPONIBLES
@@ -152,6 +157,13 @@ class FormularioOferta extends Formulario
 <input id="descuento" type="text" readonly value="{$descuento}">
 </p>
 
+<p>
+<label>
+<input type="checkbox" name="es_menu_dia" value="1" {$esMenuDiaChecked}>
+Es menú del día
+</label>
+</p>
+
 <input type="hidden" id="descuentoHidden" name="descuento" value="{$descuento}">
 
 <script src="../../JS/ofertaProductos.js"></script>
@@ -175,6 +187,7 @@ HTML;
 
         $precio_final = trim((string)($datos['precio_final'] ?? ''));
         $descuento = (float)($_POST['descuento'] ?? 0);
+        $es_menu_dia = isset($_POST['es_menu_dia']) ? 1 : 0;
 
         $productos = $_POST['productos'] ?? [];
         $cantidades = $_POST['cantidades'] ?? [];
@@ -219,7 +232,8 @@ HTML;
                 $descripcion,
                 $fecha_inicio,
                 $fecha_fin,
-                $descuento
+                $descuento,
+                $es_menu_dia
             );
 
             //  LIMPIAR RELACIONES (IMPORTANTE)
@@ -231,7 +245,8 @@ HTML;
                 $descripcion,
                 $fecha_inicio,
                 $fecha_fin,
-                $descuento
+                $descuento,
+                $es_menu_dia
             );
         }
 

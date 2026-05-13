@@ -4,16 +4,78 @@ require_once __DIR__ . '/../includes/application.php';
 
 class OfertaDAO
 {
+    private static function existeColumnaEsMenuDia(): bool
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        global $conn;
+        $result = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+        $cache = $result && $result->num_rows > 0;
+        if ($result) {
+            $result->free();
+        }
+
+        if (!$cache) {
+            // Compatibilidad automática en instalaciones antiguas
+            $conn->query("ALTER TABLE ofertas ADD COLUMN es_menu_dia TINYINT(1) NOT NULL DEFAULT 0");
+            $retry = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+            $cache = $retry && $retry->num_rows > 0;
+            if ($retry) {
+                $retry->free();
+            }
+        }
+
+        return $cache;
+    }
+
+    public static function getMenuDelDiaActivo(): ?Oferta
+    {
+        global $conn;
+
+        if (!self::existeColumnaEsMenuDia()) {
+            return null;
+        }
+
+        $stmt = $conn->prepare(
+            "SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia
+             FROM ofertas
+             WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
+               AND es_menu_dia = 1
+             ORDER BY fecha_inicio DESC
+             LIMIT 1"
+        );
+
+                $stmt->execute();
+        $result = $stmt->get_result();
+        $fila = $result->fetch_assoc();
+
+        $result->free();
+        $stmt->close();
+
+        if (!$fila) {
+            return null;
+        }
+
+        return new Oferta(
+            $fila['id'],
+            $fila['nombre'] ?? '',
+            $fila['descripcion'] ?? '',
+            $fila['fecha_inicio'],
+            $fila['fecha_fin'],
+            $fila['descuento'],
+            (bool)($fila['es_menu_dia'] ?? 0)
+        );
+    }
+
     // Obtener todas las ofertas
     public static function getAll()
     {
         global $conn;
-
-        $stmt = $conn->prepare("
-            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento 
-            FROM ofertas 
-            ORDER BY fecha_inicio DESC
-        ");
+        $selectEsMenu = self::existeColumnaEsMenuDia() ? ', es_menu_dia' : ', 0 AS es_menu_dia';
+        $stmt = $conn->prepare("SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento {$selectEsMenu} FROM ofertas ORDER BY fecha_inicio DESC");
         $stmt->execute();
         $result = $stmt->get_result();
 
@@ -25,7 +87,8 @@ class OfertaDAO
                 $fila['descripcion'] ?? '',
                 $fila['fecha_inicio'],
                 $fila['fecha_fin'],
-                $fila['descuento']
+                $fila['descuento'],
+                (bool)($fila['es_menu_dia'] ?? 0)
             );
         }
 
@@ -38,12 +101,8 @@ class OfertaDAO
     public static function getAllActivas()
     {
         global $conn;
-
-        $stmt = $conn->prepare("
-            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento 
-            FROM ofertas 
-            WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
-        ");
+        $selectEsMenu = self::existeColumnaEsMenuDia() ? ', es_menu_dia' : ', 0 AS es_menu_dia';
+        $stmt = $conn->prepare("SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento {$selectEsMenu} FROM ofertas WHERE NOW() BETWEEN fecha_inicio AND fecha_fin");
         $stmt->execute();
         $result = $stmt->get_result();
 
@@ -55,7 +114,8 @@ class OfertaDAO
                 $fila['descripcion'] ?? '',
                 $fila['fecha_inicio'],
                 $fila['fecha_fin'],
-                $fila['descuento']
+                $fila['descuento'],
+                (bool)($fila['es_menu_dia'] ?? 0)
             );
         }
 
@@ -70,11 +130,8 @@ class OfertaDAO
     {
         global $conn;
 
-        $stmt = $conn->prepare("
-            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento 
-            FROM ofertas 
-            WHERE id = ?
-        ");
+        $selectEsMenu = self::existeColumnaEsMenuDia() ? ', es_menu_dia' : ', 0 AS es_menu_dia';
+        $stmt = $conn->prepare("SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento {$selectEsMenu} FROM ofertas WHERE id = ?");
         $stmt->bind_param("i", $id);
         $stmt->execute();
 
@@ -94,21 +151,23 @@ class OfertaDAO
             $fila['descripcion'] ?? '',
             $fila['fecha_inicio'],
             $fila['fecha_fin'],
-            $fila['descuento']
+            $fila['descuento'],
+            (bool)($fila['es_menu_dia'] ?? 0)
         );
     }
 
     // Crear nueva oferta
-    public static function crearOferta($nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento)
+    public static function crearOferta($nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia = 0)
     {
         global $conn;
 
-        $stmt = $conn->prepare("
-            INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento)
-            VALUES (?, ?, ?, ?, ?)
-        ");
-
-        $stmt->bind_param("ssssd", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento);
+        if (self::existeColumnaEsMenuDia()) {
+            $stmt = $conn->prepare("INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia);
+        } else {
+            $stmt = $conn->prepare("INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento) VALUES (?, ?, ?, ?, ?)");
+            $stmt->bind_param("ssssd", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento);
+        }
         $stmt->execute();
 
         // 1. Obtenemos el ID de la oferta recién creada
@@ -121,17 +180,17 @@ class OfertaDAO
     }
 
     // Editar oferta existente
-    public static function editarOferta($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento)
+    public static function editarOferta($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia = 0)
     {
         global $conn;
 
-        $stmt = $conn->prepare("
-            UPDATE ofertas 
-            SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ?
-            WHERE id = ?
-        ");
-
-        $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $id);
+        if (self::existeColumnaEsMenuDia()) {
+            $stmt = $conn->prepare("UPDATE ofertas SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ?, es_menu_dia = ? WHERE id = ?");
+            $stmt->bind_param("ssssdii", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia, $id);
+        } else {
+            $stmt = $conn->prepare("UPDATE ofertas SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ? WHERE id = ?");
+            $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $id);
+        }
         $resultado = $stmt->execute();
         $stmt->close();
 

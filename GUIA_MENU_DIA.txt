@@ -1,0 +1,199 @@
+GUÍA COMPLETA (POO): CÓMO IMPLEMENTAR LA FUNCIONALIDAD DE MENÚ DEL DÍA EN EL PROYECTO
+======================================================================================
+
+Objetivo funcional
+------------------
+Añadir un flujo robusto para "Menú del día" que permita:
+1) que gerencia marque una oferta como menú del día con un campo explícito,
+2) que el cliente lo vea desde catálogo en una vista dedicada,
+3) que desde esa vista se añada al carrito y aplique su precio final.
+
+La implementación está adaptada a Programación Orientada a Objetos (POO) separando:
+- Entidad de dominio (Oferta)
+- Acceso a datos (OfertaDAO)
+- Lógica de servicio ya existente (OfertaService + PedidoService)
+- Vistas y scripts de flujo web
+
+
+1) FICHEROS CREADOS / MODIFICADOS
+=================================
+
+1.1) entities/Oferta.php
+------------------------
+Qué hace:
+- Añade propiedad `es_menu_dia` a la entidad Oferta.
+- Extiende constructor para recibir el flag.
+- Añade getter `esMenuDia(): bool`.
+
+Código (fragmento):
+
+private $es_menu_dia;
+
+public function __construct($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, float $descuento, bool $es_menu_dia = false)
+{
+    ...
+    $this->es_menu_dia = $es_menu_dia;
+}
+
+public function esMenuDia(): bool
+{
+    return $this->es_menu_dia;
+}
+
+
+1.2) includes/MySQL/02-tablas.sql
+----------------------------------
+Qué hace:
+- Añade columna de esquema en `ofertas`:
+
+`es_menu_dia` TINYINT(1) NOT NULL DEFAULT 0,
+
+Esto permite persistir explícitamente si una oferta es menú del día.
+
+
+1.3) includes/OfertaDAO.php
+---------------------------
+Qué hace:
+- Añade compatibilidad de esquema con `existeColumnaEsMenuDia()`.
+- Si la columna no existe, intenta auto-migrarla con ALTER TABLE.
+- Añade `getMenuDelDiaActivo()` para obtener el menú activo por flag + fechas.
+- Actualiza getAll/getAllActivas/getById para mapear `es_menu_dia`.
+- Actualiza crearOferta/editarOferta para guardar el flag.
+
+Código (fragmentos):
+
+private static function existeColumnaEsMenuDia(): bool
+{
+    ...
+    $result = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+    ...
+    if (!$cache) {
+        $conn->query("ALTER TABLE ofertas ADD COLUMN es_menu_dia TINYINT(1) NOT NULL DEFAULT 0");
+        ...
+    }
+    return $cache;
+}
+
+public static function getMenuDelDiaActivo(): ?Oferta
+{
+    if (!self::existeColumnaEsMenuDia()) {
+        return null;
+    }
+
+    SELECT ...
+    FROM ofertas
+    WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
+      AND es_menu_dia = 1
+    ORDER BY fecha_inicio DESC
+    LIMIT 1
+}
+
+
+1.4) includes/Formulario/FormularioOferta.php
+----------------------------------------------
+Qué hace:
+- Añade checkbox "Es menú del día" en el formulario de alta/edición.
+- Procesa `es_menu_dia` y lo envía a DAO en crear/editar.
+
+Código (fragmento):
+
+$es_menu_dia = isset($_POST['es_menu_dia']) ? 1 : 0;
+
+<input type="checkbox" name="es_menu_dia" value="1" ...>
+Es menú del día
+
+\OfertaDAO::crearOferta(..., $descuento, $es_menu_dia);
+\OfertaDAO::editarOferta(..., $descuento, $es_menu_dia);
+
+
+1.5) vistas/ofertas/_fila_oferta.php
+-------------------------------------
+Qué hace:
+- Muestra badge visual en listado cuando la oferta está marcada:
+
+(Menú del día)
+
+
+1.6) vistas/pedidos/catalogo.php
+---------------------------------
+Qué hace:
+- Añade entrada visible a "Ver menú del día".
+- En vez de añadir directamente desde catálogo, redirige a la vista detalle.
+
+
+1.7) vistas/pedidos/menuDia.php (nuevo)
+----------------------------------------
+Qué hace:
+- Vista específica del menú del día activo.
+- Muestra:
+  - nombre, descripción, fecha fin,
+  - productos y cantidades,
+  - precio productos,
+  - descuento,
+  - precio final calculado.
+- Incluye botón "Quiero el menú del día" que envía al script de alta en carrito.
+
+
+1.8) scripts/pedidos/addMenuDelDia.php (nuevo)
+------------------------------------------------
+Qué hace:
+- Valida usuario y carrito activo.
+- Carga menú del día activo con DAO.
+- Carga productos de la oferta y los añade al carrito.
+- Marca la oferta en sesión.
+- Reaplica ofertas con OfertaService para que el total final refleje el menú.
+- Redirige a carrito.
+
+
+2) RESUMEN DEL FLUJO FINAL
+==========================
+1. Gerente crea/edita oferta.
+2. Marca checkbox "Es menú del día".
+3. Se persiste `es_menu_dia` en tabla ofertas.
+4. Cliente entra a catálogo y pulsa "Ver menú del día".
+5. Ve detalle completo en `menuDia.php`.
+6. Pulsa "Quiero el menú del día".
+7. Se añaden productos al carrito y se aplica la oferta.
+8. En carrito se refleja el precio final del menú (vía descuento de oferta).
+
+
+3) NOTAS DE COMPATIBILIDAD
+==========================
+- Si la BD es antigua y no tiene `es_menu_dia`, el DAO intenta crearla automáticamente.
+- Si no hay menú del día activo, la vista `menuDia.php` informa que no hay menú disponible.
+- El menú del día se identifica por flag explícito (`es_menu_dia`), no por nombre.
+
+
+4) MAPA DE REFERENCIA RÁPIDA
+============================
+- entities/Oferta.php
+  - Propiedad y getter `esMenuDia`.
+
+- includes/MySQL/02-tablas.sql
+  - Columna `es_menu_dia` en `ofertas`.
+
+- includes/OfertaDAO.php
+  - Detección/autocreación de columna: `existeColumnaEsMenuDia()`.
+  - Recuperación menú activo: `getMenuDelDiaActivo()`.
+  - Persistencia flag en crear/editar.
+
+- includes/Formulario/FormularioOferta.php
+  - Checkbox `es_menu_dia` y procesado POST.
+
+- vistas/ofertas/_fila_oferta.php
+  - Badge “(Menú del día)”.
+
+- vistas/pedidos/catalogo.php
+  - Enlace a vista de menú del día.
+
+- vistas/pedidos/menuDia.php
+  - Detalle + botón de alta.
+
+- scripts/pedidos/addMenuDelDia.php
+  - Añadido de productos de menú al carrito + aplicación de ofertas.
+
+
+5) NOTA FINAL
+=============
+Si en el futuro cambian los ficheros, esta guía sigue siendo válida a nivel funcional,
+pero conviene actualizar fragmentos y referencias para mantenerla sincronizada con el código.

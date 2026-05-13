@@ -79,6 +79,8 @@ ob_start();
 ← Categorías
 </a>
 
+<a href="menuDia.php" class="btn-nuevo">🍽️ Ver menú del día</a>
+
 <a href="carrito.php" class="btn primary">
 🛒 Ver carrito
 </a>
@@ -126,6 +128,8 @@ ob_start();
 
 <div class="actions-inline mb-12">
 
+<a href="menuDia.php" class="btn-nuevo">🍽️ Ver menú del día</a>
+
 <a href="carrito.php" class="btn primary">
 🛒 Ver carrito
 </a>
@@ -134,6 +138,12 @@ ob_start();
 
 
 <h2>Elige una categoría</h2>
+
+<div class="panel mb-12">
+  <h3>🍽️ Menú del día</h3>
+  <p>Consulta sus productos y precio final antes de añadirlo.</p>
+  <a href="menuDia.php" class="btn primary">Ver detalle del menú del día</a>
+</div>
 
 
 <div class="categoria-grid">
