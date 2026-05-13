@@ -79,6 +79,10 @@ ob_start();
 ← Categorías
 </a>
 
+<form method="POST" action="../../scripts/pedidos/addMenuDelDia.php" style="display:inline;">
+<button type="submit" class="btn-nuevo">🍽️ Quiero menú del día</button>
+</form>
+
 <a href="carrito.php" class="btn primary">
 🛒 Ver carrito
 </a>
@@ -125,6 +129,10 @@ ob_start();
 <?php else: ?>
 
 <div class="actions-inline mb-12">
+
+<form method="POST" action="../../scripts/pedidos/addMenuDelDia.php" style="display:inline;">
+<button type="submit" class="btn-nuevo">🍽️ Quiero menú del día</button>
+</form>
 
 <a href="carrito.php" class="btn primary">
 🛒 Ver carrito

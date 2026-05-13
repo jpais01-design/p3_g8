@@ -4,6 +4,42 @@ require_once __DIR__ . '/../includes/application.php';
 
 class OfertaDAO
 {
+    public static function getMenuDelDiaActivo(): ?Oferta
+    {
+        global $conn;
+
+        $stmt = $conn->prepare(
+            "SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento
+             FROM ofertas
+             WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
+               AND LOWER(nombre) LIKE ?
+             ORDER BY fecha_inicio DESC
+             LIMIT 1"
+        );
+
+        $patron = '%menu del dia%';
+        $stmt->bind_param('s', $patron);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $fila = $result->fetch_assoc();
+
+        $result->free();
+        $stmt->close();
+
+        if (!$fila) {
+            return null;
+        }
+
+        return new Oferta(
+            $fila['id'],
+            $fila['nombre'] ?? '',
+            $fila['descripcion'] ?? '',
+            $fila['fecha_inicio'],
+            $fila['fecha_fin'],
+            $fila['descuento']
+        );
+    }
+
     // Obtener todas las ofertas
     public static function getAll()
     {
