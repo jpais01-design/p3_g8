@@ -272,12 +272,65 @@ header("Location: " . RUTA_APP . "/vistas/pedidos/catalogo.php");
 exit;
 
 
+
+
 2.4) includes/PedidoService.php
 --------------------------------
 Cambios clave:
 A) Se añade `mesa_id` al carrito de sesión.
 B) Se crean métodos `setMesaCarrito`, `getMesaCarrito`, `getMesasDisponibles`.
 C) Se propaga `mesa_id` al confirmar pedido.
+
+Código (fragmentos):
+
+A) Inicialización de carrito de sesión:
+
+if (!isset($_SESSION['carrito']['mesa_id'])) {
+    $_SESSION['carrito']['mesa_id'] = null;
+}
+
+... y al iniciar carrito:
+
+$_SESSION['carrito'] = [
+    'tipo' => $tipo,
+    'mesa_id' => null,
+    'items' => [],
+    'ofertas' => [],
+];
+
+B) Métodos nuevos:
+
+public static function setMesaCarrito(int $mesa_id): void
+{
+    self::asegurarCarritoSesion();
+    $_SESSION['carrito']['mesa_id'] = $mesa_id;
+}
+
+public static function getMesaCarrito(): ?int
+{
+    self::asegurarCarritoSesion();
+    return isset($_SESSION['carrito']['mesa_id']) ? (int) $_SESSION['carrito']['mesa_id'] : null;
+}
+
+public static function getMesasDisponibles(): array
+{
+    return MesaService::getMesasDisponibles();
+}
+
+C) Propagación a DAO al confirmar:
+
+$mesa_id = isset($carrito['mesa_id']) ? (int) $carrito['mesa_id'] : null;
+$pedido_id = PedidoDAO::guardarPedidoCompleto(
+    $usuario_id,
+    $metodo_pago,
+    $tipo,
+    $estado,
+    $lineas,
+    $ofertas,
+    $total_sin_descuentos,
+    $total_descuento,
+    $mesa_id
+);
 
 
 2.5) includes/PedidoDAO.php
@@ -287,21 +340,90 @@ A) `guardarPedidoCompleto(...)` acepta `mesa_id`.
 B) Si pedido local + mesa válida, asigna mesa con `MesaService::asignarMesaAPedido`.
 C) Consultas de gerente y camarero incluyen `m.numero_mesa`.
 
+Código (fragmentos):
+
+A) Firma de método:
+
+public static function guardarPedidoCompleto(
+    int $usuario_id,
+    string $metodo_pago,
+    string $tipo,
+    string $estado,
+    array $lineas,
+    array $ofertas,
+    float $total_sin_descuentos,
+    float $total_descuento,
+    ?int $mesa_id = null
+): int
+
+B) Asignación de mesa:
+
+if ($tipo === 'local' && $mesa_id !== null) {
+    MesaService::asignarMesaAPedido($pedido_id, $mesa_id);
+}
+
+C1) Consulta camarero por estado:
+
+SELECT p.*, u.nombre AS cliente_nombre, u.username, m.numero_mesa
+FROM pedidos p
+LEFT JOIN usuarios u ON p.usuario_id = u.id
+LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+LEFT JOIN mesas m ON m.id = pm.id_mesa
+WHERE p.estado = ?
+ORDER BY p.fecha_hora ASC
+
+C2) Consulta gerente:
+
+SELECT
+    p.*,
+    uc.nombre AS cocinero_nombre,
+    uc.apellidos AS cocinero_apellidos,
+    uc.avatar_valor AS avatar_valor,
+    um.nombre AS camarero_nombre,
+    um.apellidos AS camarero_apellidos,
+    um.avatar_valor AS camarero_avatar_valor,
+    m.numero_mesa
+FROM pedidos p
+LEFT JOIN usuarios uc ON p.cocinero_id = uc.id
+LEFT JOIN usuarios um ON p.camarero_id = um.id
+LEFT JOIN pedidos_mesa pm ON pm.id_pedido = p.id
+LEFT JOIN mesas m ON m.id = pm.id_mesa
+WHERE p.estado IN ('recibido', 'en_preparacion', 'cocinando', 'listo_cocina', 'terminado')
+ORDER BY p.fecha_hora ASC
+
 
 2.6) vistas/preparacion_pedidos/panel_gerente.php
 --------------------------------------------------
 - Añade columna "Mesa".
 - Ajusta `colspan` de 5 a 6.
 
+Código:
+
+<th>Mesa</th>
+...
+<td colspan="6" class="tabla-panel-vacia" data-label="">
+
 
 2.7) vistas/preparacion_pedidos/_fila_pedido_gerente.php
 ----------------------------------------------------------
 - Muestra la mesa por pedido.
 
+Código:
+
+<td data-label="Mesa" class="celda-centrada">
+    <?= isset($p['numero_mesa']) && $p['numero_mesa'] !== null ? ('Mesa #' . (int) $p['numero_mesa']) : '-' ?>
+</td>
+
 
 2.8) vistas/pedidos/_tarjetas_camarero.php
 -------------------------------------------
 - Muestra la mesa en tarjetas de camarero cuando `tipo = local`.
+
+Código:
+
+<?php if ($p['tipo'] === 'local'): ?>
+    <p><strong>Mesa:</strong> <?= isset($p['numero_mesa']) && $p['numero_mesa'] !== null ? ('#' . (int) $p['numero_mesa']) : 'Sin asignar' ?></p>
+<?php endif; ?>
 
 
 3) RESUMEN DEL FLUJO FINAL
