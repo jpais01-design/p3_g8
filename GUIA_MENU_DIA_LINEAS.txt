@@ -1,0 +1,1350 @@
+GUÍA COMPLETA (CON LÍNEAS): FUNCIONALIDAD MENÚ DEL DÍA
+=======================================================
+
+Instrucción solicitada:
+- Incluir TODAS las líneas de código y el número de línea donde van
+  para todas las modificaciones realizadas en esta funcionalidad.
+
+NOTA:
+- Esta guía refleja el estado actual del código en el repositorio.
+- Los números de línea cambiarán si se edita cualquier fichero.
+
+FICHEROS AFECTADOS
+==================
+1) entities/Oferta.php
+2) includes/Formulario/FormularioOferta.php
+3) includes/MySQL/02-tablas.sql
+4) includes/OfertaDAO.php
+5) scripts/pedidos/addMenuDelDia.php
+6) vistas/ofertas/_fila_oferta.php
+7) vistas/pedidos/catalogo.php
+8) vistas/pedidos/menuDia.php
+9) GUIA_MENU_DIA.txt
+
+=======================================================
+1) entities/Oferta.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<?php
+     2	
+     3	class Oferta
+     4	{
+     5	
+     6	    private $id;
+     7	    private $nombre;
+     8	    private $descripcion;
+     9	    private $fecha_inicio;
+    10	    private $fecha_fin;
+    11	    private $descuento; // porcentaje, e.g. 20 = 20%
+    12	    private $es_menu_dia;
+    13	
+    14	    public function __construct($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, float $descuento, bool $es_menu_dia = false)
+    15	    {
+    16	        $this->id = $id;
+    17	        $this->nombre = $nombre;
+    18	        $this->descripcion = $descripcion;
+    19	        $this->fecha_inicio = $fecha_inicio;
+    20	        $this->fecha_fin = $fecha_fin;
+    21	        $this->descuento = $descuento;
+    22	        $this->es_menu_dia = $es_menu_dia;
+    23	    }
+    24	
+    25	    // Getters
+    26	    public function getId()
+    27	    {
+    28	        return $this->id;
+    29	    }
+    30	
+    31	    public function getNombre()
+    32	    {
+    33	        return $this->nombre;
+    34	    }
+    35	
+    36	    public function getDescripcion()
+    37	    {
+    38	        return $this->descripcion;
+    39	    }
+    40	
+    41	    public function getFechaInicio()
+    42	    {
+    43	        return $this->fecha_inicio;
+    44	    }
+    45	
+    46	    public function getFechaFin()
+    47	    {
+    48	        return $this->fecha_fin;
+    49	    }
+    50	
+    51	    public function getDescuento()
+    52	    {
+    53	        return $this->descuento;
+    54	    }
+    55	
+    56	    public function esMenuDia(): bool
+    57	    {
+    58	        return $this->es_menu_dia;
+    59	    }
+    60	
+    61	    public function estaActiva()
+    62	    {
+    63	        $tz = new DateTimeZone('Europe/Madrid');
+    64	
+    65	        $ahora = new DateTime('now', $tz);
+    66	        $inicio = new DateTime($this->fecha_inicio, $tz);
+    67	        $fin = new DateTime($this->fecha_fin, $tz);
+    68	
+    69	        return $ahora >= $inicio && $ahora <= $fin;
+    70	    }
+    71	
+    72	    public function aplicarDescuento(float $precioOriginal)
+    73	    {
+    74	        return round($precioOriginal * (1 - $this->descuento / 100), 2);
+    75	    }
+    76	
+    77	    public function getPrecioInicial()
+    78	    {
+    79	        return 20;
+    80	    }
+    81	}
+
+=======================================================
+2) includes/Formulario/FormularioOferta.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<?php
+     2	
+     3	namespace es\ucm\fdi\aw\Formulario;
+     4	
+     5	require_once __DIR__ . '/Formulario.php';
+     6	require_once __DIR__ . '/../../includes/ProductoDAO.php';
+     7	require_once __DIR__ . '/../../includes/OfertaDAO.php';
+     8	require_once __DIR__ . '/../../includes/OfertaProductoDAO.php';
+     9	
+    10	class FormularioOferta extends Formulario
+    11	{
+    12	    private $oferta;
+    13	
+    14	    public function __construct($oferta = null)
+    15	    {
+    16	        parent::__construct('formOferta');
+    17	        $this->oferta = $oferta;
+    18	    }
+    19	
+    20	    protected function generaCamposFormulario(&$datos)
+    21	    {
+    22	        $nombre = htmlspecialchars(
+    23	            $datos['nombre'] ??
+    24	                ($this->oferta ? $this->oferta->getNombre() : ''),
+    25	            ENT_QUOTES,
+    26	            'UTF-8'
+    27	        );
+    28	
+    29	        $descripcion = htmlspecialchars(
+    30	            $datos['descripcion'] ??
+    31	                ($this->oferta ? $this->oferta->getDescripcion() : ''),
+    32	            ENT_QUOTES,
+    33	            'UTF-8'
+    34	        );
+    35	
+    36	        $fecha_inicio = htmlspecialchars(
+    37	            $datos['fecha_inicio'] ??
+    38	                ($this->oferta ? $this->oferta->getFechaInicio() : ''),
+    39	            ENT_QUOTES,
+    40	            'UTF-8'
+    41	        );
+    42	
+    43	        $fecha_fin = htmlspecialchars(
+    44	            $datos['fecha_fin'] ??
+    45	                ($this->oferta ? $this->oferta->getFechaFin() : ''),
+    46	            ENT_QUOTES,
+    47	            'UTF-8'
+    48	        );
+    49	
+    50	        $descuento = $datos['descuento']
+    51	            ?? ($this->oferta ? $this->oferta->getDescuento() : 0);
+    52	
+    53	        $esMenuDia = isset($datos['es_menu_dia'])
+    54	            ? (bool)$datos['es_menu_dia']
+    55	            : ($this->oferta ? $this->oferta->esMenuDia() : false);
+    56	        $esMenuDiaChecked = $esMenuDia ? 'checked' : '';
+    57	
+    58	        
+    59	        // ─────────────────────────────────────
+    60	        // PRODUCTOS DISPONIBLES
+    61	        // ─────────────────────────────────────
+    62	        $productosDisponibles = \ProductoDAO::getAllActivos();
+    63	
+    64	        $productosDisponibles = array_map(function ($p) {
+    65	            return [
+    66	                'id' => $p->getId(),
+    67	                'nombre' => $p->getNombre(),
+    68	                'precio' => (float)$p->getPrecioFinal()
+    69	            ];
+    70	        }, $productosDisponibles);
+    71	
+    72	        // ─────────────────────────────────────
+    73	        // PRODUCTOS YA ASIGNADOS (EDICIÓN)
+    74	        // ─────────────────────────────────────
+    75	        $productosOferta = [];
+    76	
+    77	        if ($this->oferta) {
+    78	
+    79	            $productosOferta = \ProductoDAO::getProductosDeOferta($this->oferta->getId());
+    80	
+    81	
+    82	            $productosOferta = array_map(function ($p) {
+    83	                return [
+    84	                    'id' => $p->getId(),
+    85	                    'nombre' => $p->getNombre(),
+    86	                    'precio' => (float)$p->getPrecioFinal(),
+    87	                    'cantidad' => $p->cantidad
+    88	                ];
+    89	            }, $productosOferta);
+    90	
+    91	        }
+    92	
+    93	        $productosJSON = json_encode($productosDisponibles, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+    94	        $productosEditJSON = json_encode($productosOferta, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
+    95	
+    96	        $errores = self::generaErroresCampos(
+    97	            ['nombre', 'descripcion', 'fecha_inicio', 'fecha_fin', 'precio_inicial', 'precio_final'],
+    98	            $this->errores,
+    99	            'span',
+   100	            ['class' => 'text-danger']
+   101	        );
+   102	
+   103	        $erroresGlobales = self::generaListaErroresGlobales(
+   104	            $this->errores,
+   105	            'text-danger'
+   106	        );
+   107	        return <<<HTML
+   108	
+   109	{$erroresGlobales}
+   110	
+   111	<script>
+   112	    const productosDisponibles = $productosJSON;
+   113	    const productosSeleccionados = $productosEditJSON;
+   114	</script>
+   115	
+   116	<p>
+   117	<label for="nombre">Nombre:</label><br>
+   118	<input type="text" name="nombre" value="{$nombre}" required minlength="3" maxlength="100">
+   119	{$errores['nombre']}
+   120	</p>
+   121	
+   122	<p>
+   123	<label>Descripción:</label><br>
+   124	<textarea name="descripcion">{$descripcion}</textarea>
+   125	</p>
+   126	
+   127	<p>
+   128	<label>Fecha inicio:</label><br>
+   129	<input type="datetime-local" name="fecha_inicio" value="{$fecha_inicio}">
+   130	</p>
+   131	
+   132	<p>
+   133	<label>Fecha fin:</label><br>
+   134	<input type="datetime-local" name="fecha_fin" value="{$fecha_fin}">
+   135	</p>
+   136	
+   137	<br>
+   138	
+   139	<div id="contenedorProductosDinamicos"></div>
+   140	
+   141	<button type="button" id="aAddProduct">Añadir producto</button>
+   142	
+   143	<br><br>
+   144	
+   145	<p>
+   146	<label>Precio inicial:</label>
+   147	<input id="precio_inicial" type="number" readonly>
+   148	</p>
+   149	
+   150	<p>
+   151	<label>Precio final:</label>
+   152	<input id="precio_final" name="precio_final" type="number" min='0' step="0.01"> <!--value="{precio_final}" -->
+   153	</p>
+   154	
+   155	<p>
+   156	<label>Descuento:</label>
+   157	<input id="descuento" type="text" readonly value="{$descuento}">
+   158	</p>
+   159	
+   160	<p>
+   161	<label>
+   162	<input type="checkbox" name="es_menu_dia" value="1" {$esMenuDiaChecked}>
+   163	Es menú del día
+   164	</label>
+   165	</p>
+   166	
+   167	<input type="hidden" id="descuentoHidden" name="descuento" value="{$descuento}">
+   168	
+   169	<script src="../../JS/ofertaProductos.js"></script>
+   170	<script src="../../JS/ofertaDescuento.js"></script>
+   171	
+   172	<p>
+   173	<button type="submit">Guardar oferta</button>
+   174	</p>
+   175	
+   176	HTML;
+   177	    }
+   178	
+   179	    protected function procesaFormulario(&$datos)
+   180	    {
+   181	        $this->errores = [];
+   182	
+   183	        $nombre = trim((string)($datos['nombre'] ?? ''));
+   184	        $descripcion = trim((string)($datos['descripcion'] ?? ''));
+   185	        $fecha_inicio = trim((string)($datos['fecha_inicio'] ?? ''));
+   186	        $fecha_fin = trim((string)($datos['fecha_fin'] ?? ''));
+   187	
+   188	        $precio_final = trim((string)($datos['precio_final'] ?? ''));
+   189	        $descuento = (float)($_POST['descuento'] ?? 0);
+   190	        $es_menu_dia = isset($_POST['es_menu_dia']) ? 1 : 0;
+   191	
+   192	        $productos = $_POST['productos'] ?? [];
+   193	        $cantidades = $_POST['cantidades'] ?? [];
+   194	
+   195	        $nombre = filter_var($nombre, FILTER_SANITIZE_SPECIAL_CHARS);
+   196	        $descripcion = filter_var($descripcion, FILTER_SANITIZE_SPECIAL_CHARS);
+   197	
+   198	        if ($nombre === '' || mb_strlen($nombre) < 3) {
+   199	            $this->errores['nombre'] = 'El nombre debe tener al menos 3 caracteres.';
+   200	        }
+   201	
+   202	        if ($fecha_inicio === '') {
+   203	            $this->errores['fecha_inicio'] = 'La fecha de inicio es obligatoria.';
+   204	        }
+   205	
+   206	        if ($fecha_fin === '') {
+   207	            $this->errores['fecha_fin'] = 'La fecha de fin es obligatoria.';
+   208	        }
+   209	
+   210	        if ($precio_final === '' || !is_numeric($precio_final)) {
+   211	            $this->errores['precio_final'] = 'Precio final no válido.';
+   212	        }
+   213	
+   214	        if ($descuento < 0) {
+   215	            $this->errores['precio_final'] = 'Precio final no válido.';
+   216	        }
+   217	
+   218	        if (!empty($this->errores)) {
+   219	            return;
+   220	        }
+   221	
+   222	        
+   223	        // CREAR O EDITAR OFERTA
+   224	        
+   225	        if ($this->oferta) {
+   226	
+   227	            $ofertaId = $this->oferta->getId();
+   228	
+   229	            \OfertaDAO::editarOferta(
+   230	                $ofertaId,
+   231	                $nombre,
+   232	                $descripcion,
+   233	                $fecha_inicio,
+   234	                $fecha_fin,
+   235	                $descuento,
+   236	                $es_menu_dia
+   237	            );
+   238	
+   239	            //  LIMPIAR RELACIONES (IMPORTANTE)
+   240	            \OfertaProductoDAO::removeProductosDeOferta($ofertaId);
+   241	        } else {
+   242	
+   243	            $ofertaId = \OfertaDAO::crearOferta(
+   244	                $nombre,
+   245	                $descripcion,
+   246	                $fecha_inicio,
+   247	                $fecha_fin,
+   248	                $descuento,
+   249	                $es_menu_dia
+   250	            );
+   251	        }
+   252	
+   253	        
+   254	        // GUARDAR PRODUCTOS
+   255	        
+   256	        foreach ($productos as $i => $productoId) {
+   257	
+   258	            $cantidad = $cantidades[$i] ?? 0;
+   259	
+   260	            if ($cantidad > 0) {
+   261	                \OfertaProductoDAO::addProducto(
+   262	                    $ofertaId,
+   263	                    $productoId,
+   264	                    $cantidad
+   265	                );
+   266	            }
+   267	        }
+   268	
+   269	        if (!$ofertaId) {
+   270	            $this->errores[] = 'No se pudo guardar la oferta.';
+   271	            return;
+   272	        }
+   273	
+   274	        $this->urlRedireccion = 'listarOfertas.php';
+   275	    }
+   276	}
+
+=======================================================
+3) includes/MySQL/02-tablas.sql (COMPLETO CON LÍNEAS)
+=======================================================
+     1	/* Deshabilitar la revisión de las claves foráneas en phpMyAdmin */
+     2	SET FOREIGN_KEY_CHECKS=0;
+     3	
+     4	USE `BistroFDI_G8`;
+     5	
+     6	CREATE TABLE IF NOT EXISTS `categorias` (
+     7	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+     8	    `nombre` VARCHAR(100),
+     9	    `descripcion` TEXT,
+    10	    `imagen` VARCHAR(255) DEFAULT NULL,
+    11	    `activa` TINYINT(1) NOT NULL DEFAULT 1
+    12	);
+    13	
+    14	CREATE TABLE IF NOT EXISTS `productos` (
+    15	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    16	    `nombre` VARCHAR(100),
+    17	    `descripcion` TEXT,
+    18	    `categoria_id` INT,
+    19	    `precio_base` DECIMAL(10,2),
+    20	    `iva` INT,
+    21	    `disponible` BOOLEAN,
+    22	    `ofertado` BOOLEAN,
+    23	    `imagen` VARCHAR(255) DEFAULT NULL,
+    24	    `se_cocina` BOOLEAN DEFAULT 1,
+    25	    FOREIGN KEY (`categoria_id`) REFERENCES `categorias`(`id`)
+    26	);
+    27	
+    28	CREATE TABLE IF NOT EXISTS `usuarios` (
+    29	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    30	    `username` VARCHAR(100) NOT NULL UNIQUE,
+    31	    `email` VARCHAR(150) NOT NULL UNIQUE,
+    32	    `nombre` VARCHAR(100) NOT NULL,
+    33	    `apellidos` VARCHAR(100) NOT NULL,
+    34	    `password_hash` VARCHAR(255) NOT NULL,
+    35	    `rol` ENUM('cliente', 'camarero', 'cocinero', 'gerente') NOT NULL DEFAULT 'cliente',
+    36	    `avatar_tipo` ENUM('default', 'preset', 'custom') NOT NULL DEFAULT 'default',
+    37	    `avatar_valor` VARCHAR(255) DEFAULT NULL,
+    38	    `activo` TINYINT(1) NOT NULL DEFAULT 1,
+    39	    `deleted_at` TIMESTAMP NULL DEFAULT NULL,
+    40	    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    41	    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    42	    `bistrocoins` INT NOT NULL DEFAULT 0
+    43	);
+    44	
+    45	CREATE TABLE IF NOT EXISTS `pedidos`(
+    46	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    47	
+    48	    `numero_pedido` INT DEFAULT NULL,
+    49	    `fecha_hora` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    50	    `fecha` DATE GENERATED ALWAYS AS (DATE(`fecha_hora`)) STORED, 
+    51	
+    52	    `estado` ENUM('nuevo', 'recibido', 'en_preparacion', 'cocinando', 'listo_cocina', 'terminado', 'entregado', 'cancelado'),
+    53	    `tipo` ENUM('local', 'llevar'), 
+    54	    `metodo_pago` ENUM('tarjeta', 'camarero') DEFAULT NULL,
+    55	    `usuario_id` INT NOT NULL,
+    56	
+    57	    `total_sin_descuentos` DECIMAL(10,2) DEFAULT 0,
+    58	    `total_descuento` DECIMAL(10,2) DEFAULT 0,
+    59	    
+    60	    `total` DECIMAL(10,2) GENERATED ALWAYS AS (total_sin_descuentos - total_descuento) STORED,
+    61	    `bistrocoins_generados` INT NOT NULL DEFAULT 0,
+    62	    `bistrocoins_gastados` INT NOT NULL DEFAULT 0,
+    63	    `bistrocoins_liquidados` TINYINT(1) NOT NULL DEFAULT 0,
+    64	    `cocinero_id` INT DEFAULT NULL,
+    65	    `camarero_id` INT DEFAULT NULL,
+    66	
+    67	    FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    68	    UNIQUE (`fecha`, `numero_pedido`),      
+    69	    FOREIGN KEY (cocinero_id) REFERENCES usuarios(id),
+    70	    FOREIGN KEY (camarero_id) REFERENCES usuarios(id)
+    71	);
+    72	
+    73	
+    74	CREATE TABLE IF NOT EXISTS `productos_en_pedido` (
+    75	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    76	
+    77	    `pedido_id` INT NOT NULL,
+    78	    `producto_id` INT NOT NULL,
+    79	
+    80	    `cantidad` INT NOT NULL DEFAULT 1,
+    81	    `precio_unitario` DECIMAL(10,2) NOT NULL,
+    82	
+    83	    `estado` ENUM('pendiente', 'preparado', 'terminado') DEFAULT 'pendiente',
+    84	    `es_recompensa` TINYINT(1) NOT NULL DEFAULT 0,
+    85	    `bistrocoins_unitarios` INT NOT NULL DEFAULT 0,
+    86	
+    87	    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+    88	    FOREIGN KEY (`producto_id`) REFERENCES `productos`(`id`) ON DELETE CASCADE,
+    89	
+    90	    UNIQUE (pedido_id, producto_id)
+    91	);
+    92	
+    93	CREATE TABLE IF NOT EXISTS `recompensas` (
+    94	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+    95	    `producto_id` INT NOT NULL,
+    96	    `bistrocoins` INT NOT NULL,
+    97	    `activa` TINYINT(1) NOT NULL DEFAULT 1,
+    98	    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    99	    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+   100	    FOREIGN KEY (`producto_id`) REFERENCES `productos`(`id`) ON DELETE CASCADE,
+   101	    UNIQUE (`producto_id`)
+   102	);
+   103	
+   104	/* =========================
+   105	   TABLAS DE OFERTAS
+   106	   ========================= */
+   107	
+   108	CREATE TABLE IF NOT EXISTS `ofertas` (
+   109	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+   110	    `nombre` VARCHAR(100) NOT NULL,
+   111	    `descripcion` TEXT,
+   112	    
+   113	    `fecha_inicio` DATETIME NOT NULL,
+   114	    `fecha_fin` DATETIME NOT NULL,
+   115	
+   116	    `descuento` DECIMAL(5,2) NOT NULL, -- ej: 21.50
+   117	    `es_menu_dia` TINYINT(1) NOT NULL DEFAULT 0,
+   118	
+   119	    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   120	    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+   121	);
+   122	
+   123	CREATE TABLE IF NOT EXISTS `oferta_productos` (
+   124	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+   125	
+   126	    `oferta_id` INT NOT NULL,
+   127	    `producto_id` INT NOT NULL,
+   128	
+   129	    `cantidad` INT NOT NULL DEFAULT 1,
+   130	
+   131	    FOREIGN KEY (`oferta_id`) REFERENCES `ofertas`(`id`) ON DELETE CASCADE,
+   132	    FOREIGN KEY (`producto_id`) REFERENCES `productos`(`id`) ON DELETE CASCADE,
+   133	
+   134	    UNIQUE (`oferta_id`, `producto_id`)
+   135	);
+   136	
+   137	CREATE TABLE IF NOT EXISTS `ofertas_en_pedido` (
+   138	    `id` INT AUTO_INCREMENT PRIMARY KEY,
+   139	
+   140	    `pedido_id` INT NOT NULL,
+   141	    `oferta_id` INT NOT NULL,
+   142	
+   143	    `veces_aplicada` INT NOT NULL DEFAULT 1,
+   144	
+   145	    `descuento_total` DECIMAL(10,2) NOT NULL,
+   146	
+   147	    FOREIGN KEY (`pedido_id`) REFERENCES `pedidos`(`id`) ON DELETE CASCADE,
+   148	    FOREIGN KEY (`oferta_id`) REFERENCES `ofertas`(`id`)
+   149	);
+   150	
+   151	
+   152	
+   153	SET FOREIGN_KEY_CHECKS=1;
+
+=======================================================
+4) includes/OfertaDAO.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<?php
+     2	require_once __DIR__ . '/../entities/Oferta.php';
+     3	require_once __DIR__ . '/../includes/application.php';
+     4	
+     5	class OfertaDAO
+     6	{
+     7	    private static function existeColumnaEsMenuDia(): bool
+     8	    {
+     9	        static $cache = null;
+    10	        if ($cache !== null) {
+    11	            return $cache;
+    12	        }
+    13	
+    14	        global $conn;
+    15	        $result = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+    16	        $cache = $result && $result->num_rows > 0;
+    17	        if ($result) {
+    18	            $result->free();
+    19	        }
+    20	
+    21	        if (!$cache) {
+    22	            // Compatibilidad automática en instalaciones antiguas
+    23	            $conn->query("ALTER TABLE ofertas ADD COLUMN es_menu_dia TINYINT(1) NOT NULL DEFAULT 0");
+    24	            $retry = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+    25	            $cache = $retry && $retry->num_rows > 0;
+    26	            if ($retry) {
+    27	                $retry->free();
+    28	            }
+    29	        }
+    30	
+    31	        return $cache;
+    32	    }
+    33	
+    34	    public static function getMenuDelDiaActivo(): ?Oferta
+    35	    {
+    36	        global $conn;
+    37	
+    38	        if (!self::existeColumnaEsMenuDia()) {
+    39	            return null;
+    40	        }
+    41	
+    42	        $stmt = $conn->prepare(
+    43	            "SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia
+    44	             FROM ofertas
+    45	             WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
+    46	               AND es_menu_dia = 1
+    47	             ORDER BY fecha_inicio DESC
+    48	             LIMIT 1"
+    49	        );
+    50	
+    51	                $stmt->execute();
+    52	        $result = $stmt->get_result();
+    53	        $fila = $result->fetch_assoc();
+    54	
+    55	        $result->free();
+    56	        $stmt->close();
+    57	
+    58	        if (!$fila) {
+    59	            return null;
+    60	        }
+    61	
+    62	        return new Oferta(
+    63	            $fila['id'],
+    64	            $fila['nombre'] ?? '',
+    65	            $fila['descripcion'] ?? '',
+    66	            $fila['fecha_inicio'],
+    67	            $fila['fecha_fin'],
+    68	            $fila['descuento'],
+    69	            (bool)($fila['es_menu_dia'] ?? 0)
+    70	        );
+    71	    }
+    72	
+    73	    // Obtener todas las ofertas
+    74	    public static function getAll()
+    75	    {
+    76	        global $conn;
+    77	        $selectEsMenu = self::existeColumnaEsMenuDia() ? ', es_menu_dia' : ', 0 AS es_menu_dia';
+    78	        $stmt = $conn->prepare("SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento {$selectEsMenu} FROM ofertas ORDER BY fecha_inicio DESC");
+    79	        $stmt->execute();
+    80	        $result = $stmt->get_result();
+    81	
+    82	        $ofertas = [];
+    83	        while ($fila = $result->fetch_assoc()) {
+    84	            $ofertas[] = new Oferta(
+    85	                $fila['id'],
+    86	                $fila['nombre'] ?? '',
+    87	                $fila['descripcion'] ?? '',
+    88	                $fila['fecha_inicio'],
+    89	                $fila['fecha_fin'],
+    90	                $fila['descuento'],
+    91	                (bool)($fila['es_menu_dia'] ?? 0)
+    92	            );
+    93	        }
+    94	
+    95	        $result->free();
+    96	        $stmt->close();
+    97	
+    98	        return $ofertas;
+    99	    }
+   100	
+   101	    public static function getAllActivas()
+   102	    {
+   103	        global $conn;
+   104	        $selectEsMenu = self::existeColumnaEsMenuDia() ? ', es_menu_dia' : ', 0 AS es_menu_dia';
+   105	        $stmt = $conn->prepare("SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento {$selectEsMenu} FROM ofertas WHERE NOW() BETWEEN fecha_inicio AND fecha_fin");
+   106	        $stmt->execute();
+   107	        $result = $stmt->get_result();
+   108	
+   109	        $ofertas = [];
+   110	        while ($fila = $result->fetch_assoc()) {
+   111	            $ofertas[] = new Oferta(
+   112	                $fila['id'],
+   113	                $fila['nombre'] ?? '',
+   114	                $fila['descripcion'] ?? '',
+   115	                $fila['fecha_inicio'],
+   116	                $fila['fecha_fin'],
+   117	                $fila['descuento'],
+   118	                (bool)($fila['es_menu_dia'] ?? 0)
+   119	            );
+   120	        }
+   121	
+   122	        $result->free();
+   123	        $stmt->close();
+   124	
+   125	        return $ofertas;
+   126	    }
+   127	
+   128	    // Obtener oferta por ID
+   129	    public static function getById($id)
+   130	    {
+   131	        global $conn;
+   132	
+   133	        $selectEsMenu = self::existeColumnaEsMenuDia() ? ', es_menu_dia' : ', 0 AS es_menu_dia';
+   134	        $stmt = $conn->prepare("SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento {$selectEsMenu} FROM ofertas WHERE id = ?");
+   135	        $stmt->bind_param("i", $id);
+   136	        $stmt->execute();
+   137	
+   138	        $result = $stmt->get_result();
+   139	        $fila = $result->fetch_assoc();
+   140	
+   141	        $result->free();
+   142	        $stmt->close();
+   143	
+   144	        if (!$fila) {
+   145	            return null;
+   146	        }
+   147	
+   148	        return new Oferta(
+   149	            $fila['id'],
+   150	            $fila['nombre'] ?? '',
+   151	            $fila['descripcion'] ?? '',
+   152	            $fila['fecha_inicio'],
+   153	            $fila['fecha_fin'],
+   154	            $fila['descuento'],
+   155	            (bool)($fila['es_menu_dia'] ?? 0)
+   156	        );
+   157	    }
+   158	
+   159	    // Crear nueva oferta
+   160	    public static function crearOferta($nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia = 0)
+   161	    {
+   162	        global $conn;
+   163	
+   164	        if (self::existeColumnaEsMenuDia()) {
+   165	            $stmt = $conn->prepare("INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia) VALUES (?, ?, ?, ?, ?, ?)");
+   166	            $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia);
+   167	        } else {
+   168	            $stmt = $conn->prepare("INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento) VALUES (?, ?, ?, ?, ?)");
+   169	            $stmt->bind_param("ssssd", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento);
+   170	        }
+   171	        $stmt->execute();
+   172	
+   173	        // 1. Obtenemos el ID de la oferta recién creada
+   174	        $id_generado = $stmt->insert_id;
+   175	
+   176	        $stmt->close();
+   177	
+   178	        // 2. Lo devolvemos
+   179	        return $id_generado;
+   180	    }
+   181	
+   182	    // Editar oferta existente
+   183	    public static function editarOferta($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia = 0)
+   184	    {
+   185	        global $conn;
+   186	
+   187	        if (self::existeColumnaEsMenuDia()) {
+   188	            $stmt = $conn->prepare("UPDATE ofertas SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ?, es_menu_dia = ? WHERE id = ?");
+   189	            $stmt->bind_param("ssssdii", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia, $id);
+   190	        } else {
+   191	            $stmt = $conn->prepare("UPDATE ofertas SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ? WHERE id = ?");
+   192	            $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $id);
+   193	        }
+   194	        $resultado = $stmt->execute();
+   195	        $stmt->close();
+   196	
+   197	        return $resultado;
+   198	    }
+   199	
+   200	    // Borrar oferta
+   201	    public static function borrarOferta($id)
+   202	    {
+   203	        global $conn;
+   204	
+   205	        $stmt = $conn->prepare("DELETE FROM ofertas WHERE id = ?");
+   206	        $stmt->bind_param("i", $id);
+   207	        $resultado = $stmt->execute();
+   208	        $stmt->close();
+   209	
+   210	        return $resultado;
+   211	    }
+   212	
+   213	    public static function ofertaEnUso($oferta_id)
+   214	    {
+   215	        global $conn;
+   216	
+   217	        $stmt = $conn->prepare("
+   218	            SELECT pedido_id
+   219	            FROM ofertas_en_pedido
+   220	            WHERE oferta_id = ?
+   221	        ");
+   222	
+   223	        $stmt->bind_param("i", $oferta_id);
+   224	        $stmt->execute();
+   225	
+   226	        $result = $stmt->get_result();
+   227	        $resultado = [];
+   228	        while ($fila = $result->fetch_assoc()) {
+   229	            $resultado[] = $fila;
+   230	        }
+   231	
+   232	        $result->free();
+   233	        $stmt->close();
+   234	
+   235	        return $resultado;
+   236	    }
+   237	
+   238	}
+
+=======================================================
+5) scripts/pedidos/addMenuDelDia.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<?php
+     2	
+     3	require_once __DIR__ . '/../../includes/config.php';
+     4	require_once __DIR__ . '/../../includes/application.php';
+     5	require_once __DIR__ . '/../../includes/auth.php';
+     6	require_once __DIR__ . '/../../includes/PedidoService.php';
+     7	require_once __DIR__ . '/../../includes/OfertaDAO.php';
+     8	require_once __DIR__ . '/../../includes/ProductoDAO.php';
+     9	require_once __DIR__ . '/../../includes/OfertaService.php';
+    10	require_once __DIR__ . '/../../includes/util.php';
+    11	
+    12	$user = require_login();
+    13	if (!PedidoService::carritoTieneTipo()) {
+    14	    redirect('../../vistas/pedidos/elegirTipo.php');
+    15	}
+    16	
+    17	$menuDelDia = OfertaDAO::getMenuDelDiaActivo();
+    18	
+    19	if (!$menuDelDia) {
+    20	    flash_set('error', 'No hay ningún menú del día activo ahora mismo.');
+    21	    redirect('../../vistas/pedidos/catalogo.php');
+    22	}
+    23	
+    24	$productosMenu = ProductoDAO::getProductosDeOferta($menuDelDia->getId());
+    25	
+    26	if (empty($productosMenu)) {
+    27	    flash_set('error', 'El menú del día no tiene productos configurados.');
+    28	    redirect('../../vistas/pedidos/catalogo.php');
+    29	}
+    30	
+    31	foreach ($productosMenu as $productoMenu) {
+    32	    $cantidad = max(1, (int)($productoMenu->cantidad ?? 1));
+    33	    PedidoService::agregarProductoAlCarrito(
+    34	        (int)$productoMenu->getId(),
+    35	        (float)$productoMenu->getPrecioFinal(),
+    36	        $cantidad
+    37	    );
+    38	}
+    39	
+    40	if (!isset($_SESSION['ofertas_seleccionadas']) || !is_array($_SESSION['ofertas_seleccionadas'])) {
+    41	    $_SESSION['ofertas_seleccionadas'] = [];
+    42	}
+    43	
+    44	if (!in_array($menuDelDia->getId(), $_SESSION['ofertas_seleccionadas'])) {
+    45	    $_SESSION['ofertas_seleccionadas'][] = $menuDelDia->getId();
+    46	}
+    47	
+    48	$errores = OfertaService::aplicarOfertas($_SESSION['ofertas_seleccionadas']);
+    49	$_SESSION['errores_ofertas'] = $errores;
+    50	
+    51	flash_set('success', 'Menú del día añadido al carrito.');
+    52	redirect('../../vistas/pedidos/carrito.php');
+
+=======================================================
+6) vistas/ofertas/_fila_oferta.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<tr>
+     2	
+     3	<td data-label="ID"><?= (int)$oferta->getId() ?></td>
+     4	
+     5	<td data-label="Nombre">
+     6	    <a class="click"
+     7	       href="detalleOferta.php?id=<?= (int)$oferta->getId() ?>&return=<?= urlencode($_SERVER['REQUEST_URI']) ?>">
+     8	        <?= escaparHtml($oferta->getNombre()) ?>
+     9	    </a>
+    10	    <?php if ($oferta->esMenuDia()): ?>
+    11	        <span class="text-success">(Menú del día)</span>
+    12	    <?php endif; ?>
+    13	</td>
+    14	
+    15	<td data-label="Fecha inicio">
+    16	<?= escaparHtml(date('d/m/Y H:i', strtotime($oferta->getFechaInicio()))) ?>
+    17	</td>
+    18	
+    19	<td data-label="Fecha fin">
+    20	<?= escaparHtml(date('d/m/Y H:i', strtotime($oferta->getFechaFin()))) ?>
+    21	</td>
+    22	
+    23	<td data-label="Estado">
+    24	<?php if (!$oferta->estaActiva()): ?>
+    25	    <span class="text-danger">Caducada</span>
+    26	<?php else: ?>
+    27	    <span class="text-success">Activa</span>
+    28	<?php endif; ?>
+    29	</td>
+    30	
+    31	<td data-label="Acciones">
+    32	<div class="actions-inline">
+    33	
+    34	<a href="editarOferta.php?id=<?= (int)$oferta->getId() ?>"
+    35	class="btn small primary">
+    36	Editar
+    37	</a>
+    38	
+    39	<form method="post"
+    40	action="../../scripts/ofertas/borrarOferta.php"
+    41	onsubmit="return confirm('¿Borrar oferta?');"
+    42	class="d-inline">
+    43	
+    44	<input type="hidden"
+    45	name="id"
+    46	value="<?= (int)$oferta->getId() ?>">
+    47	
+    48	<button class="btn small danger" type="submit">
+    49	Borrar
+    50	</button>
+    51	
+    52	</form>
+    53	
+    54	
+    55	</div>
+    56	</td>
+    57	
+    58	</tr>
+
+=======================================================
+7) vistas/pedidos/catalogo.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<?php
+     2	
+     3	require_once __DIR__ . '/../../includes/config.php';
+     4	require_once __DIR__ . '/../../includes/application.php';
+     5	require_once __DIR__ . '/../../includes/auth.php';
+     6	require_once __DIR__ . '/../../includes/util.php';
+     7	require_once __DIR__ . '/../../includes/CategoriaDAO.php';
+     8	require_once __DIR__ . '/../../includes/ProductoDAO.php';
+     9	require_once __DIR__ . '/../../entities/Pedido.php';
+    10	require_once __DIR__ . '/../../entities/Producto.php';
+    11	require_once __DIR__ . '/../../entities/Categoria.php';
+    12	require_once __DIR__ . '/../../includes/Formulario/FormularioAddCarrito.php';
+    13	require_once __DIR__ . '/../../includes/PedidoService.php';
+    14	
+    15	$user = require_login();
+    16	if (!PedidoService::carritoTieneTipo()) {
+    17	    redirect('elegirTipo.php');
+    18	}
+    19	
+    20	$categoria_id = isset($_GET['categoria']) && is_numeric($_GET['categoria'])
+    21	    ? (int)$_GET['categoria']
+    22	    : null;
+    23	
+    24	$formHtmls = [];
+    25	
+    26	if ($categoria_id) {
+    27	
+    28	    $productos = ProductoDAO::getAllActivosByCategoria($categoria_id);
+    29	
+    30	    $categoria = CategoriaDAO::getById($categoria_id);
+    31	
+    32	    if (!empty($productos)) {
+    33	
+    34	        foreach ($productos as $p) {
+    35	
+    36	            $prod_id = (int)$p->getId();
+    37	
+    38	            $formAdd =
+    39	                new \es\ucm\fdi\aw\Formulario\FormularioAddCarrito(
+    40	                    $prod_id,
+    41	                    $categoria_id
+    42	                );
+    43	
+    44	            $formHtmls[$prod_id] = $formAdd->gestiona();
+    45	        }
+    46	    }
+    47	
+    48	} else {
+    49	
+    50	    $categorias = CategoriaDAO::getAll();
+    51	
+    52	}
+    53	
+    54	$titulo = $categoria_id && isset($categoria)
+    55	    ? 'Catálogo — ' . escaparHtml($categoria->getNombre())
+    56	    : 'Catálogo';
+    57	
+    58	$tituloPagina = $titulo . ' | Bistro FDI';
+    59	$rutaCSS = RUTA_APP . '/CSS/estilo.css';
+    60	
+    61	ob_start();
+    62	?>
+    63	
+    64	<main>
+    65	
+    66	<?php foreach (flash_get_all() as $f): ?>
+    67	<div class="mensaje-<?= escaparHtml($f['type']) ?>">
+    68	<?= escaparHtml($f['message']) ?>
+    69	</div>
+    70	<?php endforeach; ?>
+    71	
+    72	
+    73	<div class="panel">
+    74	
+    75	<?php if ($categoria_id): ?>
+    76	
+    77	<div class="actions-inline mb-12">
+    78	<a href="catalogo.php" class="btn">
+    79	← Categorías
+    80	</a>
+    81	
+    82	<a href="menuDia.php" class="btn-nuevo">🍽️ Ver menú del día</a>
+    83	
+    84	<a href="carrito.php" class="btn primary">
+    85	🛒 Ver carrito
+    86	</a>
+    87	</div>
+    88	
+    89	<h2><?= escaparHtml($categoria->getNombre()) ?></h2>
+    90	
+    91	<?php if (empty($productos)): ?>
+    92	
+    93	<p>No hay productos disponibles en esta categoría.</p>
+    94	
+    95	<?php else: ?>
+    96	
+    97	<div class="table-wrap">
+    98	
+    99	<table class="tabla-productos-movil">
+   100	<thead>
+   101	<tr>
+   102	<th>Imagen</th>
+   103	<th>Nombre</th>
+   104	<th>Descripción</th>
+   105	<th>Precio</th>
+   106	<th></th>
+   107	</tr>
+   108	</thead>
+   109	
+   110	<tbody>
+   111	
+   112	<?php foreach ($productos as $p): ?>
+   113	
+   114	                <?php require __DIR__ . '/_fila_producto_catalogo.php'; ?>
+   115	
+   116	<?php endforeach; ?>
+   117	
+   118	</tbody>
+   119	
+   120	</table>
+   121	
+   122	</div>
+   123	
+   124	<?php endif; ?>
+   125	
+   126	
+   127	<?php else: ?>
+   128	
+   129	<div class="actions-inline mb-12">
+   130	
+   131	<a href="menuDia.php" class="btn-nuevo">🍽️ Ver menú del día</a>
+   132	
+   133	<a href="carrito.php" class="btn primary">
+   134	🛒 Ver carrito
+   135	</a>
+   136	
+   137	</div>
+   138	
+   139	
+   140	<h2>Elige una categoría</h2>
+   141	
+   142	<div class="panel mb-12">
+   143	  <h3>🍽️ Menú del día</h3>
+   144	  <p>Consulta sus productos y precio final antes de añadirlo.</p>
+   145	  <a href="menuDia.php" class="btn primary">Ver detalle del menú del día</a>
+   146	</div>
+   147	
+   148	
+   149	<div class="categoria-grid">
+   150	
+   151	<?php foreach ($categorias as $cat): ?>
+   152	
+   153	                <?php require __DIR__ . '/_tarjeta_categoria_catalogo.php'; ?>
+   154	
+   155	<?php endforeach; ?>
+   156	
+   157	</div>
+   158	
+   159	<?php endif; ?>
+   160	
+   161	</div>
+   162	
+   163	</main>
+   164	
+   165	<?php
+   166	$contenidoPrincipal = ob_get_clean();
+   167	require __DIR__ . '/../../includes/plantilla.php';
+   168	?>
+
+=======================================================
+8) vistas/pedidos/menuDia.php (COMPLETO CON LÍNEAS)
+=======================================================
+     1	<?php
+     2	
+     3	require_once __DIR__ . '/../../includes/config.php';
+     4	require_once __DIR__ . '/../../includes/application.php';
+     5	require_once __DIR__ . '/../../includes/auth.php';
+     6	require_once __DIR__ . '/../../includes/util.php';
+     7	require_once __DIR__ . '/../../includes/PedidoService.php';
+     8	require_once __DIR__ . '/../../includes/OfertaDAO.php';
+     9	require_once __DIR__ . '/../../includes/ProductoDAO.php';
+    10	
+    11	$user = require_login();
+    12	if (!PedidoService::carritoTieneTipo()) {
+    13	    redirect('elegirTipo.php');
+    14	}
+    15	
+    16	$menuDelDia = OfertaDAO::getMenuDelDiaActivo();
+    17	
+    18	$tituloPagina = 'Menú del día | Bistro FDI';
+    19	$rutaCSS = RUTA_APP . '/CSS/estilo.css';
+    20	
+    21	ob_start();
+    22	?>
+    23	
+    24	<main>
+    25	  <div class="panel">
+    26	    <h2>🍽️ Menú del día</h2>
+    27	
+    28	    <?php if (!$menuDelDia): ?>
+    29	      <p>No hay menú del día activo actualmente.</p>
+    30	      <a href="catalogo.php" class="btn">← Volver al catálogo</a>
+    31	    <?php else: ?>
+    32	      <?php $productos = ProductoDAO::getProductosDeOferta($menuDelDia->getId()); ?>
+    33	
+    34	      <p><strong>Nombre:</strong> <?= escaparHtml($menuDelDia->getNombre()) ?></p>
+    35	      <p><strong>Descripción:</strong> <?= nl2br(escaparHtml($menuDelDia->getDescripcion())) ?></p>
+    36	      <p><strong>Válido hasta:</strong> <?= escaparHtml(date('d/m/Y H:i', strtotime($menuDelDia->getFechaFin()))) ?></p>
+    37	
+    38	      <?php $precioTotal = 0.0; ?>
+    39	      <h3>Incluye</h3>
+    40	      <ul>
+    41	        <?php foreach ($productos as $p):
+    42	          $cantidad = (int)($p->cantidad ?? 1);
+    43	          $subtotal = (float)$p->getPrecioFinal() * $cantidad;
+    44	          $precioTotal += $subtotal;
+    45	        ?>
+    46	          <li><?= escaparHtml($p->getNombre()) ?> x<?= $cantidad ?> — <?= round($subtotal, 2) ?> €</li>
+    47	        <?php endforeach; ?>
+    48	      </ul>
+    49	
+    50	      <?php $precioFinal = $menuDelDia->aplicarDescuento($precioTotal); ?>
+    51	      <p><strong>Precio productos:</strong> <?= round($precioTotal, 2) ?> €</p>
+    52	      <p><strong>Descuento menú:</strong> <?= round((float)$menuDelDia->getDescuento(), 2) ?> %</p>
+    53	      <p><strong>Precio final menú:</strong> <?= round($precioFinal, 2) ?> €</p>
+    54	
+    55	      <div class="actions-inline">
+    56	        <a href="catalogo.php" class="btn">← Volver al catálogo</a>
+    57	        <form method="POST" action="../../scripts/pedidos/addMenuDelDia.php" style="display:inline;">
+    58	          <button type="submit" class="btn primary">Quiero el menú del día</button>
+    59	        </form>
+    60	      </div>
+    61	    <?php endif; ?>
+    62	  </div>
+    63	</main>
+    64	
+    65	<?php
+    66	$contenidoPrincipal = ob_get_clean();
+    67	require __DIR__ . '/../../includes/plantilla.php';
+
+=======================================================
+9) GUIA_MENU_DIA.txt (COMPLETO CON LÍNEAS)
+=======================================================
+     1	GUÍA COMPLETA (POO): CÓMO IMPLEMENTAR LA FUNCIONALIDAD DE MENÚ DEL DÍA EN EL PROYECTO
+     2	======================================================================================
+     3	
+     4	Objetivo funcional
+     5	------------------
+     6	Añadir un flujo robusto para "Menú del día" que permita:
+     7	1) que gerencia marque una oferta como menú del día con un campo explícito,
+     8	2) que el cliente lo vea desde catálogo en una vista dedicada,
+     9	3) que desde esa vista se añada al carrito y aplique su precio final.
+    10	
+    11	La implementación está adaptada a Programación Orientada a Objetos (POO) separando:
+    12	- Entidad de dominio (Oferta)
+    13	- Acceso a datos (OfertaDAO)
+    14	- Lógica de servicio ya existente (OfertaService + PedidoService)
+    15	- Vistas y scripts de flujo web
+    16	
+    17	
+    18	1) FICHEROS CREADOS / MODIFICADOS
+    19	=================================
+    20	
+    21	1.1) entities/Oferta.php
+    22	------------------------
+    23	Qué hace:
+    24	- Añade propiedad `es_menu_dia` a la entidad Oferta.
+    25	- Extiende constructor para recibir el flag.
+    26	- Añade getter `esMenuDia(): bool`.
+    27	
+    28	Código (fragmento):
+    29	
+    30	private $es_menu_dia;
+    31	
+    32	public function __construct($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, float $descuento, bool $es_menu_dia = false)
+    33	{
+    34	    ...
+    35	    $this->es_menu_dia = $es_menu_dia;
+    36	}
+    37	
+    38	public function esMenuDia(): bool
+    39	{
+    40	    return $this->es_menu_dia;
+    41	}
+    42	
+    43	
+    44	1.2) includes/MySQL/02-tablas.sql
+    45	----------------------------------
+    46	Qué hace:
+    47	- Añade columna de esquema en `ofertas`:
+    48	
+    49	`es_menu_dia` TINYINT(1) NOT NULL DEFAULT 0,
+    50	
+    51	Esto permite persistir explícitamente si una oferta es menú del día.
+    52	
+    53	
+    54	1.3) includes/OfertaDAO.php
+    55	---------------------------
+    56	Qué hace:
+    57	- Añade compatibilidad de esquema con `existeColumnaEsMenuDia()`.
+    58	- Si la columna no existe, intenta auto-migrarla con ALTER TABLE.
+    59	- Añade `getMenuDelDiaActivo()` para obtener el menú activo por flag + fechas.
+    60	- Actualiza getAll/getAllActivas/getById para mapear `es_menu_dia`.
+    61	- Actualiza crearOferta/editarOferta para guardar el flag.
+    62	
+    63	Código (fragmentos):
+    64	
+    65	private static function existeColumnaEsMenuDia(): bool
+    66	{
+    67	    ...
+    68	    $result = $conn->query("SHOW COLUMNS FROM ofertas LIKE 'es_menu_dia'");
+    69	    ...
+    70	    if (!$cache) {
+    71	        $conn->query("ALTER TABLE ofertas ADD COLUMN es_menu_dia TINYINT(1) NOT NULL DEFAULT 0");
+    72	        ...
+    73	    }
+    74	    return $cache;
+    75	}
+    76	
+    77	public static function getMenuDelDiaActivo(): ?Oferta
+    78	{
+    79	    if (!self::existeColumnaEsMenuDia()) {
+    80	        return null;
+    81	    }
+    82	
+    83	    SELECT ...
+    84	    FROM ofertas
+    85	    WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
+    86	      AND es_menu_dia = 1
+    87	    ORDER BY fecha_inicio DESC
+    88	    LIMIT 1
+    89	}
+    90	
+    91	
+    92	1.4) includes/Formulario/FormularioOferta.php
+    93	----------------------------------------------
+    94	Qué hace:
+    95	- Añade checkbox "Es menú del día" en el formulario de alta/edición.
+    96	- Procesa `es_menu_dia` y lo envía a DAO en crear/editar.
+    97	
+    98	Código (fragmento):
+    99	
+   100	$es_menu_dia = isset($_POST['es_menu_dia']) ? 1 : 0;
+   101	
+   102	<input type="checkbox" name="es_menu_dia" value="1" ...>
+   103	Es menú del día
+   104	
+   105	\OfertaDAO::crearOferta(..., $descuento, $es_menu_dia);
+   106	\OfertaDAO::editarOferta(..., $descuento, $es_menu_dia);
+   107	
+   108	
+   109	1.5) vistas/ofertas/_fila_oferta.php
+   110	-------------------------------------
+   111	Qué hace:
+   112	- Muestra badge visual en listado cuando la oferta está marcada:
+   113	
+   114	(Menú del día)
+   115	
+   116	
+   117	1.6) vistas/pedidos/catalogo.php
+   118	---------------------------------
+   119	Qué hace:
+   120	- Añade entrada visible a "Ver menú del día".
+   121	- En vez de añadir directamente desde catálogo, redirige a la vista detalle.
+   122	
+   123	
+   124	1.7) vistas/pedidos/menuDia.php (nuevo)
+   125	----------------------------------------
+   126	Qué hace:
+   127	- Vista específica del menú del día activo.
+   128	- Muestra:
+   129	  - nombre, descripción, fecha fin,
+   130	  - productos y cantidades,
+   131	  - precio productos,
+   132	  - descuento,
+   133	  - precio final calculado.
+   134	- Incluye botón "Quiero el menú del día" que envía al script de alta en carrito.
+   135	
+   136	
+   137	1.8) scripts/pedidos/addMenuDelDia.php (nuevo)
+   138	------------------------------------------------
+   139	Qué hace:
+   140	- Valida usuario y carrito activo.
+   141	- Carga menú del día activo con DAO.
+   142	- Carga productos de la oferta y los añade al carrito.
+   143	- Marca la oferta en sesión.
+   144	- Reaplica ofertas con OfertaService para que el total final refleje el menú.
+   145	- Redirige a carrito.
+   146	
+   147	
+   148	2) RESUMEN DEL FLUJO FINAL
+   149	==========================
+   150	1. Gerente crea/edita oferta.
+   151	2. Marca checkbox "Es menú del día".
+   152	3. Se persiste `es_menu_dia` en tabla ofertas.
+   153	4. Cliente entra a catálogo y pulsa "Ver menú del día".
+   154	5. Ve detalle completo en `menuDia.php`.
+   155	6. Pulsa "Quiero el menú del día".
+   156	7. Se añaden productos al carrito y se aplica la oferta.
+   157	8. En carrito se refleja el precio final del menú (vía descuento de oferta).
+   158	
+   159	
+   160	3) NOTAS DE COMPATIBILIDAD
+   161	==========================
+   162	- Si la BD es antigua y no tiene `es_menu_dia`, el DAO intenta crearla automáticamente.
+   163	- Si no hay menú del día activo, la vista `menuDia.php` informa que no hay menú disponible.
+   164	- El menú del día se identifica por flag explícito (`es_menu_dia`), no por nombre.
+   165	
+   166	
+   167	4) MAPA DE REFERENCIA RÁPIDA
+   168	============================
+   169	- entities/Oferta.php
+   170	  - Propiedad y getter `esMenuDia`.
+   171	
+   172	- includes/MySQL/02-tablas.sql
+   173	  - Columna `es_menu_dia` en `ofertas`.
+   174	
+   175	- includes/OfertaDAO.php
+   176	  - Detección/autocreación de columna: `existeColumnaEsMenuDia()`.
+   177	  - Recuperación menú activo: `getMenuDelDiaActivo()`.
+   178	  - Persistencia flag en crear/editar.
+   179	
+   180	- includes/Formulario/FormularioOferta.php
+   181	  - Checkbox `es_menu_dia` y procesado POST.
+   182	
+   183	- vistas/ofertas/_fila_oferta.php
+   184	  - Badge “(Menú del día)”.
+   185	
+   186	- vistas/pedidos/catalogo.php
+   187	  - Enlace a vista de menú del día.
+   188	
+   189	- vistas/pedidos/menuDia.php
+   190	  - Detalle + botón de alta.
+   191	
+   192	- scripts/pedidos/addMenuDelDia.php
+   193	  - Añadido de productos de menú al carrito + aplicación de ofertas.
+   194	
+   195	
+   196	5) NOTA FINAL
+   197	=============
+   198	Si en el futuro cambian los ficheros, esta guía sigue siendo válida a nivel funcional,
+   199	pero conviene actualizar fragmentos y referencias para mantenerla sincronizada con el código.
