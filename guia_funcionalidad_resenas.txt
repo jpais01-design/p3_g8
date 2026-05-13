@@ -575,3 +575,36 @@ D) Mapa rápido de líneas (incidencias)
 - includes/MySQL/02-tablas.sql: bloque CREATE TABLE incidencias.
 - vistas/preparacion_pedidos/panel_gerente.php: botón Ver incidencias.
 - vistas/preparacion_pedidos/incidencias.php: vista de historial para gerente.
+
+
+ANEXO 2: REFACTORIZACIÓN A PROGRAMACIÓN ORIENTADA A OBJETOS (POO)
+==================================================================
+
+Para alinear reseñas e incidencias con POO se aplicaron estos cambios:
+
+1) ENTIDADES NUEVAS
+-------------------
+- `entities/Resena.php`
+  - Modelo de dominio para reseñas con propiedades privadas y getters.
+- `entities/Incidencia.php`
+  - Modelo de dominio para incidencias con propiedades privadas y getters.
+
+2) DAO ORIENTADOS A OBJETOS
+---------------------------
+- `includes/ResenaDAO.php`
+  - `getResenasByProducto()` ahora hidrata y devuelve objetos `Resena`.
+- `includes/IncidenciaDAO.php`
+  - `getIncidenciasByPedido()` y `getAllConPedido()` devuelven objetos `Incidencia`.
+
+3) VISTAS ADAPTADAS A OBJETOS
+-----------------------------
+- `vistas/resenas/ver.php`
+  - Ahora consume getters del objeto (`getUsername()`, `getValoracion()`, etc.).
+- `vistas/preparacion_pedidos/incidencias.php`
+  - Renderiza incidencias con getters (`getId()`, `getNumeroPedido()`, `getIncidencia()`, ...).
+
+4) BENEFICIO TÉCNICO
+--------------------
+- Mejor encapsulación de datos.
+- Menor acoplamiento a arrays SQL.
+- Más facilidad para evolucionar validaciones y reglas de negocio.

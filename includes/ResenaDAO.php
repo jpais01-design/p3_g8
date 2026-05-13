@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/application.php';
+require_once __DIR__ . '/../entities/Resena.php';
 
 class ResenaDAO
 {
@@ -55,7 +56,7 @@ class ResenaDAO
     {
         global $conn;
         $stmt = $conn->prepare(
-            "SELECT r.texto, r.valoracion, r.fecha_creacion, u.username
+            "SELECT r.id, r.usuario_id, r.producto_id, r.pedido_id, r.texto, r.valoracion, r.fecha_creacion, u.username
              FROM resenas r
              JOIN usuarios u ON u.id = r.usuario_id
              WHERE r.producto_id = ?
@@ -66,7 +67,7 @@ class ResenaDAO
         $result = $stmt->get_result();
         $rows = [];
         while ($row = $result->fetch_assoc()) {
-            $rows[] = $row;
+            $rows[] = new Resena((int)$row['id'], (int)$row['usuario_id'], (int)$row['producto_id'], (int)$row['pedido_id'], (string)$row['texto'], (int)$row['valoracion'], (string)$row['fecha_creacion'], (string)$row['username']);
         }
         $result->free();
         $stmt->close();

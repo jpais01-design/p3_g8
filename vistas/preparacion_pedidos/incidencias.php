@@ -33,11 +33,11 @@ ob_start();
                 <?php else: ?>
                     <?php foreach ($incidencias as $i): ?>
                         <tr class="tabla-panel-fila">
-                            <td>#<?= (int)$i['id'] ?></td>
-                            <td>#<?= escaparHtml((string)$i['numero_pedido']) ?> (id <?= (int)$i['pedido_id'] ?>)</td>
-                            <td><?= escaparHtml($i['username']) ?></td>
-                            <td><?= escaparHtml($i['fecha_hora']) ?></td>
-                            <td><?= nl2br(escaparHtml($i['incidencia'])) ?></td>
+                            <td>#<?= (int)$i->getId() ?></td>
+                            <td>#<?= escaparHtml($i->getNumeroPedido()) ?> (id <?= (int)$i->getPedidoId() ?>)</td>
+                            <td><?= escaparHtml($i->getUsername()) ?></td>
+                            <td><?= escaparHtml($i->getFechaHora()) ?></td>
+                            <td><?= nl2br(escaparHtml($i->getIncidencia())) ?></td>
                         </tr>
                     <?php endforeach; ?>
                 <?php endif; ?>

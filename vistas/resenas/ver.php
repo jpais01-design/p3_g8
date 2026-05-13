@@ -24,10 +24,10 @@ ob_start();
         <?php else: ?>
             <?php foreach ($resenas as $r): ?>
                 <article class="panel mb-12">
-                    <p><strong>Usuario:</strong> <?= escaparHtml($r['username']) ?></p>
-                    <p><strong>Valoración:</strong> <?= (int) $r['valoracion'] ?>/5</p>
-                    <p><strong>Reseña:</strong> <?= nl2br(escaparHtml($r['texto'])) ?></p>
-                    <p><strong>Fecha:</strong> <?= escaparHtml($r['fecha_creacion']) ?></p>
+                    <p><strong>Usuario:</strong> <?= escaparHtml($r->getUsername()) ?></p>
+                    <p><strong>Valoración:</strong> <?= (int) $r->getValoracion() ?>/5</p>
+                    <p><strong>Reseña:</strong> <?= nl2br(escaparHtml($r->getTexto())) ?></p>
+                    <p><strong>Fecha:</strong> <?= escaparHtml($r->getFechaCreacion()) ?></p>
                 </article>
             <?php endforeach; ?>
         <?php endif; ?>

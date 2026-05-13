@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/application.php';
+require_once __DIR__ . '/../entities/Incidencia.php';
 
 class IncidenciaDAO
 {
@@ -22,7 +23,7 @@ class IncidenciaDAO
         $result = $stmt->get_result();
         $rows = [];
         while ($row = $result->fetch_assoc()) {
-            $rows[] = $row;
+            $rows[] = new Incidencia((int)$row['id'], (int)$row['pedido_id'], (string)$row['incidencia']);
         }
         $result->free();
         $stmt->close();
@@ -40,7 +41,7 @@ class IncidenciaDAO
         $result = $conn->query($sql);
         $rows = [];
         while ($row = $result->fetch_assoc()) {
-            $rows[] = $row;
+            $rows[] = new Incidencia((int)$row['id'], (int)$row['pedido_id'], (string)$row['incidencia'], (string)$row['numero_pedido'], (string)$row['fecha_hora'], (string)$row['username']);
         }
         $result->free();
         return $rows;
