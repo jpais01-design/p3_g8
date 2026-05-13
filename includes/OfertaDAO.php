@@ -9,17 +9,15 @@ class OfertaDAO
         global $conn;
 
         $stmt = $conn->prepare(
-            "SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento
+            "SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia
              FROM ofertas
              WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
-               AND LOWER(nombre) LIKE ?
+               AND es_menu_dia = 1
              ORDER BY fecha_inicio DESC
              LIMIT 1"
         );
 
-        $patron = '%menu del dia%';
-        $stmt->bind_param('s', $patron);
-        $stmt->execute();
+                $stmt->execute();
         $result = $stmt->get_result();
         $fila = $result->fetch_assoc();
 
@@ -36,7 +34,8 @@ class OfertaDAO
             $fila['descripcion'] ?? '',
             $fila['fecha_inicio'],
             $fila['fecha_fin'],
-            $fila['descuento']
+            $fila['descuento'],
+            (bool)($fila['es_menu_dia'] ?? 0)
         );
     }
 
@@ -46,7 +45,7 @@ class OfertaDAO
         global $conn;
 
         $stmt = $conn->prepare("
-            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento 
+            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia 
             FROM ofertas 
             ORDER BY fecha_inicio DESC
         ");
@@ -61,7 +60,8 @@ class OfertaDAO
                 $fila['descripcion'] ?? '',
                 $fila['fecha_inicio'],
                 $fila['fecha_fin'],
-                $fila['descuento']
+                $fila['descuento'],
+                (bool)($fila['es_menu_dia'] ?? 0)
             );
         }
 
@@ -76,7 +76,7 @@ class OfertaDAO
         global $conn;
 
         $stmt = $conn->prepare("
-            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento 
+            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia 
             FROM ofertas 
             WHERE NOW() BETWEEN fecha_inicio AND fecha_fin
         ");
@@ -91,7 +91,8 @@ class OfertaDAO
                 $fila['descripcion'] ?? '',
                 $fila['fecha_inicio'],
                 $fila['fecha_fin'],
-                $fila['descuento']
+                $fila['descuento'],
+                (bool)($fila['es_menu_dia'] ?? 0)
             );
         }
 
@@ -107,7 +108,7 @@ class OfertaDAO
         global $conn;
 
         $stmt = $conn->prepare("
-            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento 
+            SELECT id, nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia 
             FROM ofertas 
             WHERE id = ?
         ");
@@ -130,21 +131,22 @@ class OfertaDAO
             $fila['descripcion'] ?? '',
             $fila['fecha_inicio'],
             $fila['fecha_fin'],
-            $fila['descuento']
+            $fila['descuento'],
+            (bool)($fila['es_menu_dia'] ?? 0)
         );
     }
 
     // Crear nueva oferta
-    public static function crearOferta($nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento)
+    public static function crearOferta($nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia = 0)
     {
         global $conn;
 
         $stmt = $conn->prepare("
-            INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO ofertas (nombre, descripcion, fecha_inicio, fecha_fin, descuento, es_menu_dia)
+            VALUES (?, ?, ?, ?, ?, ?)
         ");
 
-        $stmt->bind_param("ssssd", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento);
+        $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia);
         $stmt->execute();
 
         // 1. Obtenemos el ID de la oferta recién creada
@@ -157,17 +159,17 @@ class OfertaDAO
     }
 
     // Editar oferta existente
-    public static function editarOferta($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento)
+    public static function editarOferta($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia = 0)
     {
         global $conn;
 
         $stmt = $conn->prepare("
             UPDATE ofertas 
-            SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ?
+            SET nombre = ?, descripcion = ?, fecha_inicio = ?, fecha_fin = ?, descuento = ?, es_menu_dia = ?
             WHERE id = ?
         ");
 
-        $stmt->bind_param("ssssdi", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $id);
+        $stmt->bind_param("ssssdii", $nombre, $descripcion, $fecha_inicio, $fecha_fin, $descuento, $es_menu_dia, $id);
         $resultado = $stmt->execute();
         $stmt->close();
 

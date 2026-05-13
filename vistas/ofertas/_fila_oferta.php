@@ -7,6 +7,9 @@
        href="detalleOferta.php?id=<?= (int)$oferta->getId() ?>&return=<?= urlencode($_SERVER['REQUEST_URI']) ?>">
         <?= escaparHtml($oferta->getNombre()) ?>
     </a>
+    <?php if ($oferta->esMenuDia()): ?>
+        <span class="text-success">(Menú del día)</span>
+    <?php endif; ?>
 </td>
 
 <td data-label="Fecha inicio">

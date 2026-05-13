@@ -9,8 +9,9 @@ class Oferta
     private $fecha_inicio;
     private $fecha_fin;
     private $descuento; // porcentaje, e.g. 20 = 20%
+    private $es_menu_dia;
 
-    public function __construct($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, float $descuento)
+    public function __construct($id, $nombre, $descripcion, $fecha_inicio, $fecha_fin, float $descuento, bool $es_menu_dia = false)
     {
         $this->id = $id;
         $this->nombre = $nombre;
@@ -18,6 +19,7 @@ class Oferta
         $this->fecha_inicio = $fecha_inicio;
         $this->fecha_fin = $fecha_fin;
         $this->descuento = $descuento;
+        $this->es_menu_dia = $es_menu_dia;
     }
 
     // Getters
@@ -49,6 +51,11 @@ class Oferta
     public function getDescuento()
     {
         return $this->descuento;
+    }
+
+    public function esMenuDia(): bool
+    {
+        return $this->es_menu_dia;
     }
 
     public function estaActiva()
